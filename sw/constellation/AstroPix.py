@@ -18,7 +18,9 @@ from constellation.core.configuration import Configuration
 # from constellation.core.monitoring import schedule_metric
 from constellation.core.satellite import Satellite
 # TODO imports are missing for sure
-# from astropix import astropixRun
+# import sys
+# sys.path.append('../')
+from sw.astep import astepRun
 # from core.nexysio import Nexysio
 import numpy as np
 import time
@@ -218,9 +220,9 @@ class AstroPix(Satellite):
             self.astro.asic.enable_ampout_col(self.analog)
             self.log.info(f"New analog output column: {self.analog}")
 
-        
 
-        
+
+
 
         call_init_voltages = False
         if "threshold" in partial_config.get_keys():
@@ -236,7 +238,7 @@ class AstroPix(Satellite):
         if call_init_voltages:
             self.astro.init_voltages(vthreshold=self.threshold, dacvals=(8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000]))
 
-        
+
 
         # if call_asic_init:
         self.log.info(f"Reinitializing the chip")
