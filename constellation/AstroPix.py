@@ -32,12 +32,12 @@ class AstroPix(Satellite):
     """Satellite for controlling an AstroPix chip"""
 
     def do_initializing(self, config: Configuration):
-        self.outfile_suffix = config.setdefault("outfile_suffix", "")
+        self.outfile_prefix = config.setdefault("outfile_prefix", "")
         self.outdir = config.setdefault("outdir", "../AstroPix")
         # Ensures output directory exists
         if os.path.exists(self.outdir) == False:
             os.mkdir(self.outdir)
-        # should be gecco or ???
+        # should be gecco or cmod/uart
         self.setup_type = config["setup_type"]
         self.use_shift_register = config.setdefault("use_shift_register", False)
         self.chips_per_row = config.setdefault("chips_per_row", [1])
@@ -83,7 +83,7 @@ class AstroPix(Satellite):
 
         self.log.debug(f'Configuration:\n {json.dumps(config.get_dict(), indent=1)}')
 
-    def configure_astropix(self):
+    def do_launching(self) -> str:
         asyncio.run(astro.setup_clocks())
         asyncio.run(astro.enable_spi())
         asyncio.run(astro.asic_init(yaml=self.chip_configs, chipsPerRow=self.chips_per_row))
@@ -115,43 +115,51 @@ class AstroPix(Satellite):
         for layer in range(len(self.chip_configs)):
             asyncio.run(astro.asic_configure(layer))
             asyncio.run(astro.setup_readout(layer, autoread=not(self.autoread)))
-
-    def do_launching(self) -> str:
-        self.configure_astropix()
         return f"AstroPix is configured"
 
     def do_reconfigure(self, partial_config) -> str:
-        # Still not rewritten, need to check and modify stuff!!!
-        call_asic_init = False
-        if "outfile_suffix" in partial_config.get_keys():
-            self.outfile_suffix = partial_config["outfile_suffix"]
-            self.log.info(f"New suffix for the output files: {self.outfile_suffix}")
+
+        # parameters that are not possible to configure
+
+        if "setup_type" in partial_config.get_keys():
+            raise ValueError("Changing the setup type ('gecco'/'cmod/uart') is not possible, restart the satellite")
+
+        if "use_shift_register" in partial_config.get_keys():
+            raise ValueError("Changing the way of configuring the chip (SPI/shift register) is not possible, restart the satellite")
+
+        if "chips_per_row" in partial_config.get_keys():
+            raise ValueError("Changing the number of chips per row is not possible, restart the satellite")
+
+        if "chip_version" in partial_config.get_keys():
+            raise ValueError("Reconfiguring chip version is not possible")
+
+        if "injection_onchip" in partial_config.get_keys():
+            raise ValueError("Reconfiguring the source of injection (on chip/through the injection board) is not possible")
+
+        # parameters that just need to be redefined without calling any functions
+
+        if "outfile_prefix" in partial_config.get_keys():
+            self.outfile_prefix = partial_config["outfile_prefix"]
+            self.log.info(f"New prefix for the output files: {self.outfile_prefix}")
+
         if "outdir" in partial_config.get_keys():
             self.outdir = partial_config["outdir"]
             if os.path.exists(self.outdir) == False:
                 os.mkdir(self.outdir)
             self.log.info(f"New directory for the output files: {self.outdir}")
 
-        if "chip_config" in partial_config.get_keys():
-            self.chip_config = partial_config["chip_config"]
-            call_asic_init = True
-            self.log.info(f"New config for the chip: {self.chip_config}")
+        if "autoread" in partial_config.get_keys():
+            self.autoread = partial_config["autoread"]
+            self.log.info(f"Now {'reading' if self.autoread else 'not reading'} the chip data")
 
-        if "analog" in partial_config.get_keys():
-            self.analog = partial_config["analog"]
-            call_asic_init = True
-            self.astro.asic.enable_ampout_col(self.analog)
-            self.log.info(f"New analog output column: {self.analog}")
-
-        if "chip_version" in partial_config.get_keys():
-            raise ValueError("Reconfiguring chip version is not possible")
+        # injection parameters
 
         if "injection_row" in partial_config.get_keys() or "injection_col" in partial_config.get_keys():
             if "injection_row" in partial_config.get_keys():
                 self.injection_row = partial_config["injection_row"]
             if "injection_col" in partial_config.get_keys():
                 self.injection_col = partial_config["injection_col"]
-            new_inject = (self.injection_row, self.injection_col) if self.injection_row is not None and self.injection_col is not None else None
+            new_inject = True if self.injection_row is not None and self.injection_col is not None else False
             self.log.info(f"New injection pixel is {new_inject} (old: {self.inject})")
             if self.inject is not None:
                 self.astro.disable_pixel(self.inject[1], self.inject[0])
@@ -197,6 +205,23 @@ class AstroPix(Satellite):
         if call_init_injection:
             self.astro.init_injection(inj_voltage=self.injection_voltage, onchip=self.injection_onchip, inj_period=self.injection_period, clkdiv=self.injection_clkdiv, initdelay=self.injection_initdelay, cycle=self.injection_cycle, pulseperset=self.injection_pulsesperset)
 
+        call_asic_init = False
+
+        if "chip_configs" in partial_config.get_keys():
+            self.chip_config = partial_config["chip_configs"]
+            call_asic_init = True
+            self.log.info(f"New config(s) for the chip(s): {self.chip_configs}")
+
+        if "analog" in partial_config.get_keys():
+            self.analog = partial_config["analog"]
+            call_asic_init = True
+            self.astro.asic.enable_ampout_col(self.analog)
+            self.log.info(f"New analog output column: {self.analog}")
+
+        
+
+        
+
         call_init_voltages = False
         if "threshold" in partial_config.get_keys():
             self.threshold = partial_config["threshold"]
@@ -211,8 +236,7 @@ class AstroPix(Satellite):
         if call_init_voltages:
             self.astro.init_voltages(vthreshold=self.threshold, dacvals=(8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000]))
 
-        if "injection_onchip" in partial_config.get_keys():
-            raise ValueError("Reconfiguring the source of injection (on chip/through the injection board) is not possible")
+        
 
         # if call_asic_init:
         self.log.info(f"Reinitializing the chip")
@@ -255,7 +279,7 @@ class AstroPix(Satellite):
         # self.log.info(f'Configuration saved to file {ymlpathout}')
 
         # Prepare text files/logs
-        fname = "" if not self.outfile_suffix else self.outfile_suffix + "_"
+        fname = "" if not self.outfile_prefix else self.outfile_prefix + "_"
         bitpath = self.outdir + '/' + fname + time_config + '.bin'
         # textfiles are always saved so we open it up
         if hasattr(self, 'bitfile'):
