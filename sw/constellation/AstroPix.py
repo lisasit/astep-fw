@@ -18,9 +18,7 @@ from constellation.core.configuration import Configuration
 # from constellation.core.monitoring import schedule_metric
 from constellation.core.satellite import Satellite
 # TODO imports are missing for sure
-# import sys
-# sys.path.append('../')
-from sw.astep import astepRun
+from astep import astepRun
 # from core.nexysio import Nexysio
 import numpy as np
 import time
@@ -39,7 +37,7 @@ class AstroPix(Satellite):
         # Ensures output directory exists
         if os.path.exists(self.outdir) == False:
             os.mkdir(self.outdir)
-        # should be gecco or cmod/uart
+        # should be gecco or cmod
         self.setup_type = config["setup_type"]
         self.use_shift_register = config.setdefault("use_shift_register", False)
         self.chips_per_row = config.setdefault("chips_per_row", [1])
@@ -77,25 +75,25 @@ class AstroPix(Satellite):
             self.astro.close_connection()
         self.astro = astepRun(chipversion=self.chip_version, SR=self.use_shift_register)
         if self.setup_type == "gecco":
-            asyncio.run(astro.open_fpga(cmod=False, uart=False))
-        elif setup_type == "cmod/uart":
-            asyncio.run(astro.open_fpga(cmod=True, uart=True))
+            asyncio.run(self.astro.open_fpga(cmod=False, uart=False))
+        elif setup_type == "cmod":
+            asyncio.run(self.astro.open_fpga(cmod=True, uart=True))
         else:
-            raise ValueError(f"Unknown setup type {self.setup_type}, should be 'gecco' or 'cmod/uart'")
+            raise ValueError(f"Unknown setup type {self.setup_type}, should be 'gecco' or 'cmod'")
 
         self.log.debug(f'Configuration:\n {json.dumps(config.get_dict(), indent=1)}')
 
     def do_launching(self) -> str:
-        asyncio.run(astro.setup_clocks())
-        asyncio.run(astro.enable_spi())
-        asyncio.run(astro.asic_init(yaml=self.chip_configs, chipsPerRow=self.chips_per_row))
+        asyncio.run(self.astro.setup_clocks())
+        asyncio.run(self.astro.enable_spi())
+        asyncio.run(self.astro.asic_init(yaml=self.chip_configs, chipsPerRow=self.chips_per_row))
 
         if self.setup_type == "gecco":
-            asyncio.run(astro.init_voltages(dacvals = (8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000])))
+            asyncio.run(self.astro.init_voltages(dacvals = (8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000])))
 
         if self.inject:
-            asyncio.run(astro.enable_injection(layer=self.injection_layer, chip=self.injection_chip, row=self.injection_row, col=self.injection_col))
-            asyncio.run(astro.enable_pixel(layer=self.injection_layer, chip=self.injection_chip, row=self.injection_row, col=self.injection_col))
+            asyncio.run(self.astro.enable_injection(layer=self.injection_layer, chip=self.injection_chip, row=self.injection_row, col=self.injection_col))
+            asyncio.run(self.astro.enable_pixel(layer=self.injection_layer, chip=self.injection_chip, row=self.injection_row, col=self.injection_col))
 
 
             is_mV_injection = True
@@ -103,20 +101,20 @@ class AstroPix(Satellite):
                 if self.injection_voltage is None:
                     # Priority to TOML config, defaults to yaml - already in vdac units
                     try:
-                        self.injection_voltage = astro.boardDriver.getAsic(row=self.injection_layer).asic_config[f'config_{self.injection_chip}']['vdacs']['vinj'][1]
+                        self.injection_voltage = self.astro.boardDriver.getAsic(row=self.injection_layer).asic_config[f'config_{self.injection_chip}']['vdacs']['vinj'][1]
                         is_mV_injection = False
                     except (KeyError, IndexError):
                         self.log.error(f"Injection arguments layer={self.injection_layer}, chip={self.injection_chip} invalid. Cannot initialize injection")
                         self.inject = None
 
             if self.injection_voltage is not None:
-                asyncio.run(astro.init_injection(layer=self.injection_layer, chip=self.injection_chip, inj_voltage=self.injection_voltage, onchip=self.injection_onchip, inj_period=self.injection_period, clkdiv=self.injection_clkdiv, initdelay=self.injection_initdelay, cycle=self.injection_cycle, pulseperset=self.injection_pulsesperset, is_mV=is_mV_injection))
+                asyncio.run(self.astro.init_injection(layer=self.injection_layer, chip=self.injection_chip, inj_voltage=self.injection_voltage, onchip=self.injection_onchip, inj_period=self.injection_period, clkdiv=self.injection_clkdiv, initdelay=self.injection_initdelay, cycle=self.injection_cycle, pulseperset=self.injection_pulsesperset, is_mV=is_mV_injection))
 
-        asyncio.run(astro.enable_analog(layer=self.analog_layer, chip=self.analog_chip, col=self.analog_chip))
+        asyncio.run(self.astro.enable_analog(layer=self.analog_layer, chip=self.analog_chip, col=self.analog_chip))
 
         for layer in range(len(self.chip_configs)):
-            asyncio.run(astro.asic_configure(layer))
-            asyncio.run(astro.setup_readout(layer, autoread=not(self.autoread)))
+            asyncio.run(self.astro.asic_configure(layer))
+            asyncio.run(self.astro.setup_readout(layer, autoread=not(self.autoread)))
         return f"AstroPix is configured"
 
     def do_reconfigure(self, partial_config) -> str:
@@ -124,7 +122,7 @@ class AstroPix(Satellite):
         # parameters that are not possible to configure
 
         if "setup_type" in partial_config.get_keys():
-            raise ValueError("Changing the setup type ('gecco'/'cmod/uart') is not possible, restart the satellite")
+            raise ValueError("Changing the setup type (gecco/cmod) is not possible, restart the satellite")
 
         if "use_shift_register" in partial_config.get_keys():
             raise ValueError("Changing the way of configuring the chip (SPI/shift register) is not possible, restart the satellite")
