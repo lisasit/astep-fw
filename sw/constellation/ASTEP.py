@@ -80,6 +80,8 @@ class ASTEP(Satellite):
 
         self.spi_clkdiv = config.setdefault("spi_clkdiv", 20)
 
+        self.nbytes_to_read_out = config.setdefault("nbytes_to_read_out", None)
+
 
         self.astro = astepRun(chipversion=self.chip_version, SR=self.use_shift_register)
         if self.setup_type == "gecco":
@@ -147,6 +149,7 @@ class ASTEP(Satellite):
 
         try:
             for layer, (nchips, config) in enumerate(zip(self.chips_per_row, self.chip_configs)):
+                self.log.debug(f'Setting up layer {layer} chips per row {nchips} config {config}')
                 self.boardDriver.setupASIC(version = self.chip_version, row = layer, chipsPerRow = nchips , configFile = config )
         except FileNotFoundError as e :
             self.log.error(f'Config File {config} was not found, pass the name of a config file from the scripts/config folder')
@@ -192,6 +195,7 @@ class ASTEP(Satellite):
         # Flush old data
         #await boardDriver.layersSelectSPI(flush=True)#Set chipSelect
         self.board_driver_buffer_flush()#Exit with hold active and manages chipselect itself
+        self.finalize_config()
         return f"AstroPix is configured"
 
     def do_reconfigure(self, partial_config) -> str:
@@ -328,6 +332,7 @@ class ASTEP(Satellite):
         if self.inject is not None:
             asyncio.run(self.boardDriver.getInjector().start())
             return f"Injections into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row} col {self.injection_col} started"
+        asyncio.run(self.boardDriver.enableLayersReadout(range(self.nlayers), autoread=self.autoread, flush=True))
         return f"Chip ready for taking data"
 
     def do_stopping(self):
@@ -335,13 +340,15 @@ class ASTEP(Satellite):
 
     def do_run(self, payload: any) -> str:
         while not self._state_thread_evt.is_set():
-            continue
             if not self.autoread:
-                continue
-            buff, readout = asyncio.run(self.astro.get_readout())
-            if readout: #if there is data contained in the readout stream
-                self.bitfile.write(buff.to_bytes(2, byteorder='big'))
-                self.bitfile.write(readout[:buff])
+                for layer in range(self.nlayers):
+                    asyncio.run(self.boardDriver.writeLayerBytes(layer = layer, bytes = [0x00] * 255, flush=True))
+            buffer_size = asyncio.run(self.boardDriver.readoutGetBufferSize())
+            counts = self.nbytes_to_read_out if self.nbytes_to_read_out is not None else buffer_size
+            readout = asyncio.run(self.boardDriver.readoutReadBytes(counts))
+            if buffer_size > 0: #if there is data contained in the readout stream
+                self.bitfile.write(buffer_size.to_bytes(2, byteorder='big'))
+                self.bitfile.write(readout)
         return "Finished data acquisition"
 
     def finalize_config(self):
