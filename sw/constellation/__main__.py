@@ -8,7 +8,7 @@ Provides the entry point for the AstroPix satellite
 from constellation.core.logging import setup_cli_logging
 from constellation.core.satellite import SatelliteArgumentParser
 
-from AstroPix import AstroPix
+from ASTEP import ASTEP
 
 
 def main(args=None):
@@ -22,7 +22,7 @@ def main(args=None):
     setup_cli_logging(args.pop("level"))
 
     # Start satellite with remaining args
-    s = AstroPix(**args)
+    s = ASTEP(**args)
     s.run_satellite()
 
 

@@ -19,6 +19,7 @@ from constellation.core.configuration import Configuration
 from constellation.core.satellite import Satellite
 # TODO imports are missing for sure
 from astep import astepRun
+import drivers.boards
 # from core.nexysio import Nexysio
 import numpy as np
 import time
@@ -28,7 +29,7 @@ import asyncio
 # import pandas as pd
 import json
 
-class AstroPix(Satellite):
+class ASTEP(Satellite):
     """Satellite for controlling an AstroPix chip"""
 
     def do_initializing(self, config: Configuration):
@@ -71,15 +72,21 @@ class AstroPix(Satellite):
         self.newfilter = config.setdefault("newfilter", False)
         self.warmup = config.setdefault("warmup", True)
         self.threshold_pmos = config.setdefault("threshold_pmos", 1100)
-        if hasattr(self, 'astro'):
-            self.astro.close_connection()
+
+
         self.astro = astepRun(chipversion=self.chip_version, SR=self.use_shift_register)
         if self.setup_type == "gecco":
-            asyncio.run(self.astro.open_fpga(cmod=False, uart=False))
+            self.board_driver = drivers.boards.getGeccoFTDIDriver()
+            # asyncio.run(self.astro.open_fpga(cmod=False, uart=False))
         elif setup_type == "cmod":
-            asyncio.run(self.astro.open_fpga(cmod=True, uart=True))
+            self.board_driver = drivers.boards.getCMODUartDriver("COM6")
+            # asyncio.run(self.astro.open_fpga(cmod=True, uart=True))
         else:
             raise ValueError(f"Unknown setup type {self.setup_type}, should be 'gecco' or 'cmod'")
+
+        asyncio.run(self.board_driver.open())
+        fwid = asyncio.run(self.board_driver.readFirmwareID())
+        self.log.info(f'FW ID: {fwid}')
 
         self.log.debug(f'Configuration:\n {json.dumps(config.get_dict(), indent=1)}')
 
