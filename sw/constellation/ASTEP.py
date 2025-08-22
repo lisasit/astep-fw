@@ -326,8 +326,8 @@ class ASTEP(Satellite):
 
     def do_starting(self, run_identifier: str):
         if self.inject is not None:
-            asyncio.run(self.astro.start_injection())
-            return f"Injections into pixel {self.inject} started"
+            asyncio.run(self.boardDriver.getInjector().start())
+            return f"Injections into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row} col {self.injection_col} started"
         return f"Chip ready for taking data"
 
     def do_stopping(self):
@@ -335,6 +335,7 @@ class ASTEP(Satellite):
 
     def do_run(self, payload: any) -> str:
         while not self._state_thread_evt.is_set():
+            continue
             if not self.autoread:
                 continue
             buff, readout = asyncio.run(self.astro.get_readout())
