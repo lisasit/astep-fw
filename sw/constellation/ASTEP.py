@@ -72,7 +72,7 @@ class ASTEP(Satellite):
         self.analog_layer = config.setdefault("analog_layer", 0)
         self.analog_chip = config.setdefault("analog_chip", 0)
         self.analog_col = config.setdefault("analog_col", 0)
-        self.threshold = config.setdefault("threshold", None)
+        self.threshold = config.setdefault("threshold", 1000)
         self.injection_onchip = config.setdefault("injection_onchip", True)
         self.threshold_pmos = config.setdefault("threshold_pmos", 1100)
 
