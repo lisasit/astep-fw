@@ -164,8 +164,13 @@ class ASTEP(Satellite):
                 # Priority to command line, defaults to yaml - already in vdac units
                 if self.injection_voltage is not None:
                     self.boardDriver.asics[self.injection_layer].asic_config[f"config_{self.injection_chip}"]["vdacs"]["vinj"][1] = int(self.injection_voltage/1000*1024/1.8)#1.8 V coded on 10 bits
+                    
                 injector = self.boardDriver.getInjector()
-                injector.setPattern(self.injection_period, self.injection_clkdiv, self.injection_initdelay, self.injection_cycle, self.injection_pulsesperset)#Default set of parameters
+                injector.period = self.injection_period
+                injector.clkdiv = self.injection_clkdiv
+                injector.initdelay = self.injection_initdelay
+                injector.cycle = self.injection_cycle
+                injector.pulsesperset = self.injection_pulsesperset
                 asyncio.run(self.boardDriver.ioSetInjectionToChip(enable = True, flush = True)) # Routes injection pattern to on-chip injector
             except (KeyError, IndexError):
                 self.log.error(f"Injection arguments layer={self.injection_layer}, chip={self.injection_chip} invalid. Cannot initialize injection.")
@@ -181,17 +186,21 @@ class ASTEP(Satellite):
         asyncio.run(self.boardDriver.disableLayersReadout(flush=True))#Hold, disableMISO, disableAutoread, CS=inactive
         asyncio.run(self.boardDriver.resetLayersFull())#Toggle RST
 
-        # Set chip IDs
-        asyncio.run(self.boardDriver.layersSelectSPI(flush=True))#Set chipSelect
-        for layer in range(self.nlayers):
-            asyncio.run(self.boardDriver.asics[layer].writeSPIRoutingFrame(0))
-            asyncio.run(self.boardDriver.layersDeselectSPI(flush=True))#Unset chipSelect
-
-            for ichip in range(self.chips_per_row[layer]):
-                asyncio.run(self.boardDriver.layersSelectSPI(flush=True))#Set chipSelect
-                payload = self.boardDriver.asics[layer].createSPIConfigFrame(load=True, n_load=10, broadcast=False, targetChip=ichip)
-                asyncio.run(self.boardDriver.asics[layer].writeSPI(payload))
+        if self.use_shift_register:
+            for layer in range(self.nlayers):
+                asyncio.run(self.boardDriver.asics[layer].writeConfigSR())
+        else:
+            # Set chip IDs
+            asyncio.run(self.boardDriver.layersSelectSPI(flush=True))#Set chipSelect
+            for layer in range(self.nlayers):
+                asyncio.run(self.boardDriver.asics[layer].writeSPIRoutingFrame(0))
                 asyncio.run(self.boardDriver.layersDeselectSPI(flush=True))#Unset chipSelect
+
+                for ichip in range(self.chips_per_row[layer]):
+                    asyncio.run(self.boardDriver.layersSelectSPI(flush=True))#Set chipSelect
+                    payload = self.boardDriver.asics[layer].createSPIConfigFrame(load=True, n_load=10, broadcast=False, targetChip=ichip)
+                    asyncio.run(self.boardDriver.asics[layer].writeSPI(payload))
+                    asyncio.run(self.boardDriver.layersDeselectSPI(flush=True))#Unset chipSelect
         # Flush old data
         #await boardDriver.layersSelectSPI(flush=True)#Set chipSelect
         self.board_driver_buffer_flush()#Exit with hold active and manages chipselect itself
