@@ -44,7 +44,10 @@ class ASTEP(Satellite):
         self.chips_per_row = config.setdefault("chips_per_row", [1])
         self.autoread = config.setdefault("autoread", True)
 
+        pathdelim = os.path.sep
+        self.config_directory = config.setdefault("config_directory", f"{os.getcwd()}{pathdelim}scripts{pathdelim}config")
         self.chip_configs = config["chip_configs"]
+        self.chip_configs = [self.config_directory + pathdelim + config + '.yml' for config in self.chip_configs]
         if len(self.chip_configs) > len(self.chips_per_row):
             self.chips_per_row = [self.chips_per_row[0]]*len(self.chip_configs)
             if len(self.chips_per_row) > 1:
@@ -73,31 +76,50 @@ class ASTEP(Satellite):
         self.warmup = config.setdefault("warmup", True)
         self.threshold_pmos = config.setdefault("threshold_pmos", 1100)
 
+        self.spi_clkdiv = config.setdefault("spi_clkdiv", 20)
+
 
         self.astro = astepRun(chipversion=self.chip_version, SR=self.use_shift_register)
         if self.setup_type == "gecco":
-            self.board_driver = drivers.boards.getGeccoFTDIDriver()
+            self.boardDriver = drivers.boards.getGeccoFTDIDriver()
             # asyncio.run(self.astro.open_fpga(cmod=False, uart=False))
         elif setup_type == "cmod":
-            self.board_driver = drivers.boards.getCMODUartDriver("COM6")
+            self.boardDriver = drivers.boards.getCMODUartDriver("COM6")
             # asyncio.run(self.astro.open_fpga(cmod=True, uart=True))
         else:
             raise ValueError(f"Unknown setup type {self.setup_type}, should be 'gecco' or 'cmod'")
 
-        asyncio.run(self.board_driver.open())
-        fwid = asyncio.run(self.board_driver.readFirmwareID())
+        asyncio.run(self.boardDriver.open())
+        fwid = asyncio.run(self.boardDriver.readFirmwareID())
         self.log.info(f'FW ID: {fwid}')
 
         self.log.debug(f'Configuration:\n {json.dumps(config.get_dict(), indent=1)}')
 
     def do_launching(self) -> str:
-        asyncio.run(self.astro.setup_clocks())
-        asyncio.run(self.astro.enable_spi())
-        asyncio.run(self.astro.asic_init(yaml=self.chip_configs, chipsPerRow=self.chips_per_row))
+        asyncio.run(self.boardDriver.enableSensorClocks(flush = True))
+        asyncio.run(self.boardDriver.layersConfigFPGATimestampFrequency(targetFrequencyHz = 1000000, flush = True))
+        asyncio.run(self.boardDriver.layersConfigFPGATimestamp(enable = True, force = False, source_match_counter = True, source_external = False, flush = True))
+        asyncio.run(self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush = True))
+        asyncio.run(self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True))
 
         if self.setup_type == "gecco":
-            asyncio.run(self.astro.init_voltages(dacvals = (8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000])))
+            self.voltage_board = self.boardDriver.geccoGetVoltageBoard()
+            self.log.debug(f'dacvalues = {self.voltage_board.dacvalues}')
+            self.voltage_board.dacvalues = (8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000])
+            self.log.debug(f'dacvalues = {self.voltage_board.dacvalues}')
+            self.voltage_board.vcal = 1.0
+            self.voltage_board.vsupply = 2.7
+            asyncio.run(self.voltage_board.update())
+            self.log.info('Voltage board initialized')
 
+        try:
+            for layer, (nchips, config) in enumerate(zip(self.chips_per_row, self.chip_configs)):
+                self.boardDriver.setupASIC(version = self.chip_version, row = layer, chipsPerRow = nchips , configFile = config )
+        except FileNotFoundError as e :
+            self.log.error(f'Config File {config} was not found, pass the name of a config file from the scripts/config folder')
+            raise e
+        self.log.info(f'{len(self.boardDriver.asics)} ASIC drivers instanciated')
+        return
         if self.inject:
             asyncio.run(self.astro.enable_injection(layer=self.injection_layer, chip=self.injection_chip, row=self.injection_row, col=self.injection_col))
             asyncio.run(self.astro.enable_pixel(layer=self.injection_layer, chip=self.injection_chip, row=self.injection_row, col=self.injection_col))
