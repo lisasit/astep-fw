@@ -103,13 +103,13 @@ class ASTEP(Satellite):
         asyncio.run(self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True))
 
         if self.setup_type == "gecco":
-            self.voltage_board = self.boardDriver.geccoGetVoltageBoard()
-            self.log.debug(f'dacvalues = {self.voltage_board.dacvalues}')
-            self.voltage_board.dacvalues = (8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000])
-            self.log.debug(f'dacvalues = {self.voltage_board.dacvalues}')
-            self.voltage_board.vcal = 1.0
-            self.voltage_board.vsupply = 2.7
-            asyncio.run(self.voltage_board.update())
+            voltage_board = self.boardDriver.geccoGetVoltageBoard()
+            self.log.debug(f'dacvalues = {voltage_board.dacvalues}')
+            voltage_board.dacvalues = (8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000])
+            self.log.debug(f'dacvalues = {voltage_board.dacvalues}')
+            voltage_board.vcal = 1.0
+            voltage_board.vsupply = 2.7
+            asyncio.run(voltage_board.update())
             self.log.info('Voltage board initialized')
 
         try:
@@ -118,26 +118,24 @@ class ASTEP(Satellite):
         except FileNotFoundError as e :
             self.log.error(f'Config File {config} was not found, pass the name of a config file from the scripts/config folder')
             raise e
-        self.log.info(f'{len(self.boardDriver.asics)} ASIC drivers instanciated')
-        return
+        self.log.info(f'{len(self.boardDriver.asics)} ASIC driver(s) instanciated')
+
         if self.inject:
-            asyncio.run(self.astro.enable_injection(layer=self.injection_layer, chip=self.injection_chip, row=self.injection_row, col=self.injection_col))
-            asyncio.run(self.astro.enable_pixel(layer=self.injection_layer, chip=self.injection_chip, row=self.injection_row, col=self.injection_col))
+            try:
+                self.boardDriver.asics[self.injection_layer].enable_inj_col(self.injection_chip, self.injection_col, inplace=False)
+                self.boardDriver.asics[self.injection_layer].enable_inj_row(self.injection_chip, self.injection_row, inplace=False)
+                self.boardDriver.asics[self.injection_layer].enable_pixel(chip=self.injection_chip, col=self.injection_col, row=self.injection_row, inplace=False)
+                # Priority to command line, defaults to yaml - already in vdac units
+                if self.injection_voltage is not None:
+                    self.boardDriver.asics[self.injection_layer].asic_config[f"config_{self.injection_chip}"]["vdacs"]["vinj"][1] = int(self.injection_voltage/1000*1024/1.8)#1.8 V coded on 10 bits
+                injector = self.boardDriver.getInjector()
+                injector.setPattern(self.injection_period, self.injection_clkdiv, self.injection_initdelay, self.injection_cycle, self.injection_pulsesperset)#Default set of parameters
+                asyncio.run(self.boardDriver.ioSetInjectionToChip(enable = True, flush = True)) # Routes injection pattern to on-chip injector
+            except (KeyError, IndexError):
+                self.log.error(f"Injection arguments layer={self.injection_layer}, chip={self.injection_chip} invalid. Cannot initialize injection.")
+                self.inject = None
 
-
-            is_mV_injection = True
-            if self.setup_type != "gecco":
-                if self.injection_voltage is None:
-                    # Priority to TOML config, defaults to yaml - already in vdac units
-                    try:
-                        self.injection_voltage = self.astro.boardDriver.getAsic(row=self.injection_layer).asic_config[f'config_{self.injection_chip}']['vdacs']['vinj'][1]
-                        is_mV_injection = False
-                    except (KeyError, IndexError):
-                        self.log.error(f"Injection arguments layer={self.injection_layer}, chip={self.injection_chip} invalid. Cannot initialize injection")
-                        self.inject = None
-
-            if self.injection_voltage is not None:
-                asyncio.run(self.astro.init_injection(layer=self.injection_layer, chip=self.injection_chip, inj_voltage=self.injection_voltage, onchip=self.injection_onchip, inj_period=self.injection_period, clkdiv=self.injection_clkdiv, initdelay=self.injection_initdelay, cycle=self.injection_cycle, pulseperset=self.injection_pulsesperset, is_mV=is_mV_injection))
+        return
 
         asyncio.run(self.astro.enable_analog(layer=self.analog_layer, chip=self.analog_chip, col=self.analog_chip))
 
