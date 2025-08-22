@@ -74,5 +74,8 @@ The list of available configuration options:
 |`threshold` | int [mV] | `1000` | Threshold for pixels with NMOS amplifiers. Is set from 0 and not from the baseline, so threshold of 100 set with `main.py` would be 1100 with this method | `-t` `--threshold` + 1000 mV |
 |`threshold_pmos` | int [mV] | `1100` | Threshold for pixels with PMOS amplifiers. Is set from 0 and not from the baseline | -- |
 |`spi_clkdiv` | int | `20` | SPI clock divider | -- |
+
+You can choose which configuration file to use when initializing the satellite in MissionControl
 |`nbytes_to_read_out` | int | `None` | How many bytes per FPGA readout to read (1 - 4098). If None, everything that is there is read out | `-r` `--readout`|
+
 
