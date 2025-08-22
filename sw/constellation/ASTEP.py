@@ -74,8 +74,6 @@ class ASTEP(Satellite):
         self.analog_col = config.setdefault("analog_col", 0)
         self.threshold = config.setdefault("threshold", None)
         self.injection_onchip = config.setdefault("injection_onchip", True)
-        self.newfilter = config.setdefault("newfilter", False)
-        self.warmup = config.setdefault("warmup", True)
         self.threshold_pmos = config.setdefault("threshold_pmos", 1100)
 
         self.spi_clkdiv = config.setdefault("spi_clkdiv", 20)
@@ -164,7 +162,7 @@ class ASTEP(Satellite):
                 # Priority to command line, defaults to yaml - already in vdac units
                 if self.injection_voltage is not None:
                     self.boardDriver.asics[self.injection_layer].asic_config[f"config_{self.injection_chip}"]["vdacs"]["vinj"][1] = int(self.injection_voltage/1000*1024/1.8)#1.8 V coded on 10 bits
-                    
+
                 injector = self.boardDriver.getInjector()
                 injector.period = self.injection_period
                 injector.clkdiv = self.injection_clkdiv
