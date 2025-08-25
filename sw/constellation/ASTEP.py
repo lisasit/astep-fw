@@ -172,7 +172,7 @@ class ASTEP(Satellite):
                 asyncio.run(self.boardDriver.ioSetInjectionToChip(enable = True, flush = True)) # Routes injection pattern to on-chip injector
             except (KeyError, IndexError):
                 self.log.error(f"Injection arguments layer={self.injection_layer}, chip={self.injection_chip} invalid. Cannot initialize injection.")
-                self.inject = None
+                self.inject = False
 
         self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
 
@@ -249,10 +249,10 @@ class ASTEP(Satellite):
                 self.injection_col = partial_config["injection_col"]
             new_inject = True if self.injection_row is not None and self.injection_col is not None else False
             self.log.info(f"New injection pixel is {new_inject} (old: {self.inject})")
-            if self.inject is not None:
+            if self.inject:
                 self.astro.disable_pixel(self.inject[1], self.inject[0])
             self.inject = new_inject
-            if self.inject is not None:
+            if self.inject:
                 self.astro.injection_row = self.injection_row
                 self.astro.injection_col = self.injection_col
                 self.astro.enable_pixel(self.inject[1], self.inject[0])
@@ -336,13 +336,16 @@ class ASTEP(Satellite):
         return "No way to control anything from here, consider AstroPix landed"
 
     def do_starting(self, run_identifier: str):
-        if self.inject is not None:
+        if self.inject:
             asyncio.run(self.boardDriver.getInjector().start())
             return f"Injections into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row} col {self.injection_col} started"
         asyncio.run(self.boardDriver.enableLayersReadout(range(self.nlayers), autoread=self.autoread, flush=True))
         return f"Chip ready for taking data"
 
     def do_stopping(self):
+        if self.inject:
+            asyncio.run(self.boardDriver.getInjector().stop())
+            return "Injections stopped"
         return "Nothing is done, AstroPix is unstoppable"
 
     def do_run(self, payload: any) -> str:
@@ -351,10 +354,11 @@ class ASTEP(Satellite):
                 for layer in range(self.nlayers):
                     asyncio.run(self.boardDriver.writeLayerBytes(layer = layer, bytes = [0x00] * 255, flush=True))
             buffer_size = asyncio.run(self.boardDriver.readoutGetBufferSize())
+            self.log.debug(f'buffer size = {buffer_size}')
             counts = self.nbytes_to_read_out if self.nbytes_to_read_out is not None else buffer_size
             readout = asyncio.run(self.boardDriver.readoutReadBytes(counts))
             if buffer_size > 0: #if there is data contained in the readout stream
-                self.bitfile.write(buffer_size.to_bytes(2, byteorder='big'))
+                self.bitfile.write(buffer_size.to_bytes(4, byteorder='big'))
                 self.bitfile.write(readout)
         return "Finished data acquisition"
 
