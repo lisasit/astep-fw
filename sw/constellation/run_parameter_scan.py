@@ -46,7 +46,7 @@ def main(args):
     wait_time = 1
 
     # directory for the output files
-    output_directory_format = '/media/teleuser/4TB/astropix/threshold_scans_astep_test/vinj{injection_voltage}/{inection_row}_{injection_col}/raw_data'
+    output_directory_format = '/media/teleuser/4TB/astropix/threshold_scans_astep_test/vinj{injection_voltage}/{injection_row}_{injection_col}/raw_data'
 
     # output files will be located in this directory with names
     # key1_value1_key2_value2_ ... _date_and_time.bin
