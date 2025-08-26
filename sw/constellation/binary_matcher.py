@@ -9,7 +9,7 @@ class Hit:
         self.payload = None
         self.chip_id = None
         self.tot_us = None
-        self.fpga_ts
+        self.fpga_ts = None
 
     def get_dict(self):
         return self.__dict__
