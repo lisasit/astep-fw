@@ -42,8 +42,7 @@ class ASTEP(Satellite):
         self.chips_per_row = config.setdefault("chips_per_row", [1])
         self.autoread = config.setdefault("autoread", True)
 
-        pathdelim = os.path.sep
-        self.config_directory = config.setdefault("config_directory", f"{os.getcwd()}{pathdelim}scripts{pathdelim}config")
+        self.config_directory = config.setdefault("config_directory", f"{os.getcwd()}{os.path.sep}scripts{os.path.sep}config")
         self.chip_configs = config["chip_configs"]
 
         self.find_chip_configs()
@@ -79,7 +78,7 @@ class ASTEP(Satellite):
         self.log.info(f'Board driver successfully opened')
 
     def find_chip_configs(self):
-        self.chip_configs = [self.config_directory + pathdelim + config + '.yml' for config in self.chip_configs]
+        self.chip_configs = [self.config_directory + os.path.sep + config + '.yml' for config in self.chip_configs]
         if len(self.chip_configs) > len(self.chips_per_row):
             self.chips_per_row = [self.chips_per_row[0]]*len(self.chip_configs)
             if len(self.chips_per_row) > 1:
@@ -345,7 +344,7 @@ class ASTEP(Satellite):
         if call_setup_injection:
             # if injection was going on previously and the chip was not reconfigured, we need to disable the pixel that we were injecting into
             if self.inject and not call_setup_asics:
-                self.boardDriver.asics[self.injection_layer].disable_pixel(row=self.injection_row, col=self.injection_col)
+                self.boardDriver.asics[self.injection_layer].disable_pixel(row=self.injection_row, col=self.injection_col, chip=self.injection_chip)
             self.inject = True if self.injection_row is not None and self.injection_col is not None else False
             self.log.info(f"Injection into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row}, col {self.injection_col}")
             await self.setup_injection()
