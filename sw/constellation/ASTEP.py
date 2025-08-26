@@ -5,32 +5,30 @@ SPDX-License-Identifier: EUPL-1.2
 Provides the class for the AstroPix example satellite
 """
 
-# import random
-# import time
-# from typing import Any
-
-# from constellation.core.cmdp import MetricsType
-# from constellation.core.commandmanager import cscp_requestable
 from constellation.core.configuration import Configuration
 
-# from constellation.core.cscp import CSCPMessage
-# from constellation.core.fsm import SatelliteState
-# from constellation.core.monitoring import schedule_metric
 from constellation.core.satellite import Satellite
 # TODO imports are missing for sure
 from astep import astepRun
 import drivers.boards
-# from core.nexysio import Nexysio
 import numpy as np
 import time
 import os
 import asyncio
-# import binascii
-# import pandas as pd
 import json
+import asyncio
 
 class ASTEP(Satellite):
     """Satellite for controlling an AstroPix chip"""
+
+    def async_run(func):
+        def internal_func(self, *args, **kwargs):
+            async def async_func(self, *args, **kwargs):
+                await self.lock.acquire()
+                await func(self, *args, **kwargs)
+                self.lock.release()
+            asyncio.run(async_func(self, *args, **kwargs))
+        return internal_func
 
     def do_initializing(self, config: Configuration):
         self.outfile_prefix = config.setdefault("outfile_prefix", "")
@@ -80,8 +78,13 @@ class ASTEP(Satellite):
 
         self.nbytes_to_read_out = config.setdefault("nbytes_to_read_out", None)
 
+        self.lock = asyncio.Lock()
+        self.log.debug(f'Configuration:\n {json.dumps(config.get_dict(), indent=1)}')
+        self.open_board_driver()
+        self.log.info(f'Board driver successfully opened')
 
-        self.astro = astepRun(chipversion=self.chip_version, SR=self.use_shift_register)
+    @async_run
+    async def open_board_driver(self):
         if self.setup_type == "gecco":
             self.boardDriver = drivers.boards.getGeccoFTDIDriver()
             # asyncio.run(self.astro.open_fpga(cmod=False, uart=False))
@@ -91,58 +94,57 @@ class ASTEP(Satellite):
         else:
             raise ValueError(f"Unknown setup type {self.setup_type}, should be 'gecco' or 'cmod'")
 
-        asyncio.run(self.boardDriver.open())
-        fwid = asyncio.run(self.boardDriver.readFirmwareID())
+        await self.boardDriver.open()
+        fwid = await self.boardDriver.readFirmwareID()
         self.log.info(f'FW ID: {fwid}')
 
-        self.log.debug(f'Configuration:\n {json.dumps(config.get_dict(), indent=1)}')
-
-    def board_driver_print_status(self, time=0., buff=0):
-        status = [asyncio.run(self.boardDriver.getLayerStatus(layer)) for layer in range(self.nlayers)]
-        ctrl = [asyncio.run(self.boardDriver.getLayerControl(layer)) for layer in range(self.nlayers)]
-        wrongl = [asyncio.run(self.boardDriver.getLayerWrongLength(layer)) for layer in range(self.nlayers)]
+    async def board_driver_print_status(self, time=0., buff=0):
+        status = [await self.boardDriver.getLayerStatus(layer) for layer in range(self.nlayers)]
+        ctrl = [await self.boardDriver.getLayerControl(layer) for layer in range(self.nlayers)]
+        wrongl = [await self.boardDriver.getLayerWrongLength(layer) for layer in range(self.nlayers)]
         log_string = "[{time:04.2} s] buff={0:04d}".format(buff, time=time)
         for i in range(self.nlayers):
             log_string += " {0} = {1:02b}-{2:06b}-{3:04d}".format(i, status[i], ctrl[i], wrongl[i])
         self.log.info(log_string)
 
-    def board_driver_buffer_flush(self):
+    async def board_driver_buffer_flush(self):
         """This method flushes data from SPI lanes then from FPGA buffer, and resets counters"""
         self.log.info("Flush chips before data collection")
-        asyncio.run(self.boardDriver.holdLayers(hold=False, flush=True))
+        await self.boardDriver.holdLayers(hold=False, flush=True)
         for layer in range(self.nlayers):
             interrupt_counter = 0
-            interrupt = asyncio.run(self.boardDriver.getLayerStatus(layer))
+            interrupt = await self.boardDriver.getLayerStatus(layer)
             while interrupt & 1 == 0 and interrupt_counter < 20:
                 self.log.info("interrupt low")
-                asyncio.run(self.boardDriver.layersSelectSPI(flush=True))
-                asyncio.run(self.boardDriver.writeLayerBytes(layer = layer, bytes = [0x00] * 128, flush=True))
-                asyncio.run(self.boardDriver.layersDeselectSPI(flush=True))
+                await self.boardDriver.layersSelectSPI(flush=True)
+                await self.boardDriver.writeLayerBytes(layer = layer, bytes = [0x00] * 128, flush=True)
+                await self.boardDriver.layersDeselectSPI(flush=True)
                 # Let's not bother emptying the FPGA buffer, at this point it can overflow, and this data is trashed anyways since disableMISO in probably True
                 interrupt_counter += 1
-                interrupt = asyncio.run(self.boardDriver.getLayerStatus(layer))
+                interrupt = await self.boardDriver.getLayerStatus(layer)
         # Reassert hold to be safe
-        asyncio.run(self.boardDriver.holdLayers(hold=True, flush=True))
+        await self.boardDriver.holdLayers(hold=True, flush=True)
         # Now all interrupts are high, empty FPGA buffer
         self.log.info("Flush FPGA buffer before data collection")
-        asyncio.run(self.boardDriver.readoutReadBytes(4098))
-        asyncio.run(self.boardDriver.resetLayerStatCounters(layer))
+        await self.boardDriver.readoutReadBytes(4098)
+        await self.boardDriver.resetLayerStatCounters(layer)
 
-    def do_launching(self) -> str:
-        asyncio.run(self.boardDriver.enableSensorClocks(flush = True))
-        asyncio.run(self.boardDriver.layersConfigFPGATimestampFrequency(targetFrequencyHz = 1000000, flush = True))
-        asyncio.run(self.boardDriver.layersConfigFPGATimestamp(enable = True, force = False, source_match_counter = True, source_external = False, flush = True))
-        asyncio.run(self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush = True))
-        asyncio.run(self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True))
+    @async_run
+    async def do_launching(self) -> str:
+        await self.boardDriver.enableSensorClocks(flush = True)
+        await self.boardDriver.layersConfigFPGATimestampFrequency(targetFrequencyHz = 1000000, flush = True)
+        await self.boardDriver.layersConfigFPGATimestamp(enable = True, force = False, source_match_counter = True, source_external = False, flush = True)
+        await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush = True)
+        await self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True)
 
         if self.setup_type == "gecco":
             voltage_board = self.boardDriver.geccoGetVoltageBoard()
             self.log.debug(f'dacvalues = {voltage_board.dacvalues}')
             voltage_board.dacvalues = (8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000])
             self.log.debug(f'dacvalues = {voltage_board.dacvalues}')
-            voltage_board.vcal = 1.0
+            voltage_board.vcal = .989
             voltage_board.vsupply = 2.7
-            asyncio.run(voltage_board.update())
+            await voltage_board.update()
             self.log.info('Voltage board initialized')
 
         try:
@@ -169,43 +171,46 @@ class ASTEP(Satellite):
                 injector.initdelay = self.injection_initdelay
                 injector.cycle = self.injection_cycle
                 injector.pulsesperset = self.injection_pulsesperset
-                asyncio.run(self.boardDriver.ioSetInjectionToChip(enable = True, flush = True)) # Routes injection pattern to on-chip injector
+                await self.boardDriver.ioSetInjectionToChip(enable = True, flush = True) # Routes injection pattern to on-chip injector
             except (KeyError, IndexError):
                 self.log.error(f"Injection arguments layer={self.injection_layer}, chip={self.injection_chip} invalid. Cannot initialize injection.")
                 self.inject = False
 
         self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
 
-        self.board_driver_print_status()
+        await self.board_driver_print_status()
 
         for layer in range(self.nlayers):
-            asyncio.run(self.boardDriver.zeroLayerWrongLength(layer, flush=True))
+            await self.boardDriver.zeroLayerWrongLength(layer, flush=True)
 
-        asyncio.run(self.boardDriver.disableLayersReadout(flush=True))#Hold, disableMISO, disableAutoread, CS=inactive
-        asyncio.run(self.boardDriver.resetLayersFull())#Toggle RST
+        await self.boardDriver.disableLayersReadout(flush=True)#Hold, disableMISO, disableAutoread, CS=inactive
+        await self.boardDriver.resetLayersFull()#Toggle RST
 
         if self.use_shift_register:
             for layer in range(self.nlayers):
-                asyncio.run(self.boardDriver.asics[layer].writeConfigSR())
+                await self.boardDriver.asics[layer].writeConfigSR()
         else:
             # Set chip IDs
-            asyncio.run(self.boardDriver.layersSelectSPI(flush=True))#Set chipSelect
+            await self.boardDriver.layersSelectSPI(flush=True)#Set chipSelect
             for layer in range(self.nlayers):
-                asyncio.run(self.boardDriver.asics[layer].writeSPIRoutingFrame(0))
-                asyncio.run(self.boardDriver.layersDeselectSPI(flush=True))#Unset chipSelect
+                await self.boardDriver.asics[layer].writeSPIRoutingFrame(0)
+                await self.boardDriver.layersDeselectSPI(flush=True)#Unset chipSelect
 
                 for ichip in range(self.chips_per_row[layer]):
-                    asyncio.run(self.boardDriver.layersSelectSPI(flush=True))#Set chipSelect
+                    await self.boardDriver.layersSelectSPI(flush=True)#Set chipSelect
                     payload = self.boardDriver.asics[layer].createSPIConfigFrame(load=True, n_load=10, broadcast=False, targetChip=ichip)
-                    asyncio.run(self.boardDriver.asics[layer].writeSPI(payload))
-                    asyncio.run(self.boardDriver.layersDeselectSPI(flush=True))#Unset chipSelect
+                    await self.boardDriver.asics[layer].writeSPI(payload)
+                    await self.boardDriver.layersDeselectSPI(flush=True)#Unset chipSelect
         # Flush old data
-        #await boardDriver.layersSelectSPI(flush=True)#Set chipSelect
-        self.board_driver_buffer_flush()#Exit with hold active and manages chipselect itself
+        await self.board_driver_buffer_flush()#Exit with hold active and manages chipselect itself
+        #benchtest
+        for layer in range(self.nlayers):
+            await self.boardDriver.setLayerConfig(layer = layer , reset = False , autoread  = self.autoread, hold=False, flush = True )
         self.finalize_config()
         return f"AstroPix is configured"
 
-    def do_reconfigure(self, partial_config) -> str:
+    @async_run
+    async def do_reconfigure(self, partial_config) -> str:
 
         # parameters that are not possible to configure
 
@@ -335,28 +340,31 @@ class ASTEP(Satellite):
     def do_landing(self) -> str:
         return "No way to control anything from here, consider AstroPix landed"
 
-    def do_starting(self, run_identifier: str):
+    @async_run
+    async def do_starting(self, run_identifier: str):
         if self.inject:
-            asyncio.run(self.boardDriver.getInjector().start())
+            await self.boardDriver.getInjector().start()
             return f"Injections into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row} col {self.injection_col} started"
-        asyncio.run(self.boardDriver.enableLayersReadout(range(self.nlayers), autoread=self.autoread, flush=True))
+        await self.boardDriver.enableLayersReadout(range(self.nlayers), autoread=self.autoread, flush=True)
         return f"Chip ready for taking data"
 
-    def do_stopping(self):
+    @async_run
+    async def do_stopping(self):
         if self.inject:
-            asyncio.run(self.boardDriver.getInjector().stop())
+            await self.boardDriver.getInjector().stop()
             return "Injections stopped"
         return "Nothing is done, AstroPix is unstoppable"
 
-    def do_run(self, payload: any) -> str:
+    @async_run
+    async def do_run(self, payload: any) -> str:
         while not self._state_thread_evt.is_set():
             if not self.autoread:
                 for layer in range(self.nlayers):
-                    asyncio.run(self.boardDriver.writeLayerBytes(layer = layer, bytes = [0x00] * 255, flush=True))
-            buffer_size = asyncio.run(self.boardDriver.readoutGetBufferSize())
-            self.log.debug(f'buffer size = {buffer_size}')
+                    await self.boardDriver.writeLayerBytes(layer = layer, bytes = [0x00] * 255, flush=True)
+            buffer_size = await self.boardDriver.readoutGetBufferSize()
+            self.log.debug(f'buffer size {buffer_size}')
             counts = self.nbytes_to_read_out if self.nbytes_to_read_out is not None else buffer_size
-            readout = asyncio.run(self.boardDriver.readoutReadBytes(counts))
+            readout = await self.boardDriver.readoutReadBytes(counts)
             if buffer_size > 0: #if there is data contained in the readout stream
                 self.bitfile.write(buffer_size.to_bytes(4, byteorder='big'))
                 self.bitfile.write(readout)
