@@ -26,7 +26,7 @@ def main(args):
 
     constellation.initialize(cfg)
     ctrl.await_state(SatelliteState.INIT)
-    # time.sleep(0.1)
+    time.sleep(2)
     constellation.launch()
     ctrl.await_state(SatelliteState.ORBIT)
 
