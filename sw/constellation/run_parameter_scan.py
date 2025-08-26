@@ -101,7 +101,7 @@ def main(args):
         ctrl.await_state(SatelliteState.ORBIT)
 
 
-        constellation.start(refg['outfile_prefix'])
+        constellation.start(recfg['outfile_prefix'])
         ctrl.await_state(SatelliteState.RUN)
 
         # Run for wait_time
