@@ -2,7 +2,6 @@
 from drivers.boards.board_driver import BoardDriver
 from .voltageboard import VoltageBoard
 from .injectionboard import InjectionBoard
-from .injector import Injector
 import rfg.io
 import rfg.core
 import rfg.discovery
@@ -53,5 +52,5 @@ class GeccoCarrierBoard(BoardDriver):
         else: v &= ~(0x8)
         await self.rfg.write_io_ctrl(v,flush)
 
-    def getInjector(self, period=100, clkdiv=300, initdelay=100, cycle=0, ppset=1) -> Injector:
+    def getInjector(self, period=100, clkdiv=300, initdelay=100, cycle=0, ppset=1) -> InjectionBoard:
         return self.geccoGetInjectionBoard()
