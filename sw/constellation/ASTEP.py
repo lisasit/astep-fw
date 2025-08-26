@@ -200,6 +200,9 @@ class ASTEP(Satellite):
                     await self.boardDriver.layersDeselectSPI(flush=True)#Unset chipSelect
         # Flush old data
         await self.board_driver_buffer_flush()#Exit with hold active and manages chipselect itself
+        # from benchtest
+        for layer in range(self.nlayers):
+            await self.boardDriver.setLayerConfig(layer = layer , reset = False , autoread  = self.autoread, hold=False, flush = True )
 
     @async_run
     async def do_launching(self) -> str:
@@ -218,10 +221,6 @@ class ASTEP(Satellite):
         self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
 
         await self.write_configuration()
-
-        #benchtest
-        for layer in range(self.nlayers):
-            await self.boardDriver.setLayerConfig(layer = layer , reset = False , autoread  = self.autoread, hold=False, flush = True )
         self.finalize_config()
         return f"AstroPix is configured"
 
