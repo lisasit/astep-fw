@@ -399,7 +399,6 @@ class ASTEP(Satellite):
                 for layer in range(self.nlayers):
                     await self.boardDriver.writeLayerBytes(layer = layer, bytes = [0x00] * 255, flush=True)
             buffer_size = await self.boardDriver.readoutGetBufferSize()
-            self.log.debug(f'buffer size {buffer_size}')
             counts = self.nbytes_to_read_out if self.nbytes_to_read_out is not None else buffer_size
             readout = await self.boardDriver.readoutReadBytes(counts)
             if buffer_size > 0: #if there is data contained in the readout stream
