@@ -77,10 +77,10 @@ class Decoder:
             self.hits += matcher.hits
 
     def read_block(self):
-        read_int = self.bin_file.read(4)
+        read_int = self.bin_file.read(2)
         if len(read_int) == 0:
             return None
-        nbits = int.from_bytes(read_int, "big")
+        nbits = int.from_bytes(read_int, "little")
         result_block = self.bin_file.read(nbits)
         return result_block
 

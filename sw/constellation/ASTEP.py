@@ -129,6 +129,27 @@ class ASTEP(Satellite):
         await self.boardDriver.readoutReadBytes(4098)
         await self.boardDriver.resetLayerStatCounters(layer)
 
+    async def setup_injection(self):
+        if self.inject:
+            try:
+                self.boardDriver.asics[self.injection_layer].enable_inj_col(self.injection_chip, self.injection_col, inplace=False)
+                self.boardDriver.asics[self.injection_layer].enable_inj_row(self.injection_chip, self.injection_row, inplace=False)
+                self.boardDriver.asics[self.injection_layer].enable_pixel(chip=self.injection_chip, col=self.injection_col, row=self.injection_row, inplace=False)
+                # Priority to command line, defaults to yaml - already in vdac units
+                if self.injection_voltage is not None:
+                    self.boardDriver.asics[self.injection_layer].asic_config[f"config_{self.injection_chip}"]["vdacs"]["vinj"][1] = int(self.injection_voltage/1000*1024/1.8)#1.8 V coded on 10 bits
+
+                injector = self.boardDriver.getInjector()
+                injector.period = self.injection_period
+                injector.clkdiv = self.injection_clkdiv
+                injector.initdelay = self.injection_initdelay
+                injector.cycle = self.injection_cycle
+                injector.pulsesperset = self.injection_pulsesperset
+                await self.boardDriver.ioSetInjectionToChip(enable = True, flush = True) # Routes injection pattern to on-chip injector
+            except (KeyError, IndexError):
+                self.log.error(f"Injection arguments layer={self.injection_layer}, chip={self.injection_chip} invalid. Cannot initialize injection.")
+                self.inject = False
+
     @async_run
     async def do_launching(self) -> str:
         await self.boardDriver.enableSensorClocks(flush = True)
@@ -156,25 +177,7 @@ class ASTEP(Satellite):
             raise e
         self.log.info(f'{len(self.boardDriver.asics)} ASIC driver(s) instanciated')
 
-        if self.inject:
-            try:
-                self.boardDriver.asics[self.injection_layer].enable_inj_col(self.injection_chip, self.injection_col, inplace=False)
-                self.boardDriver.asics[self.injection_layer].enable_inj_row(self.injection_chip, self.injection_row, inplace=False)
-                self.boardDriver.asics[self.injection_layer].enable_pixel(chip=self.injection_chip, col=self.injection_col, row=self.injection_row, inplace=False)
-                # Priority to command line, defaults to yaml - already in vdac units
-                if self.injection_voltage is not None:
-                    self.boardDriver.asics[self.injection_layer].asic_config[f"config_{self.injection_chip}"]["vdacs"]["vinj"][1] = int(self.injection_voltage/1000*1024/1.8)#1.8 V coded on 10 bits
-
-                injector = self.boardDriver.getInjector()
-                injector.period = self.injection_period
-                injector.clkdiv = self.injection_clkdiv
-                injector.initdelay = self.injection_initdelay
-                injector.cycle = self.injection_cycle
-                injector.pulsesperset = self.injection_pulsesperset
-                await self.boardDriver.ioSetInjectionToChip(enable = True, flush = True) # Routes injection pattern to on-chip injector
-            except (KeyError, IndexError):
-                self.log.error(f"Injection arguments layer={self.injection_layer}, chip={self.injection_chip} invalid. Cannot initialize injection.")
-                self.inject = False
+        await self.setup_injection()
 
         self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
 
@@ -212,7 +215,7 @@ class ASTEP(Satellite):
     @async_run
     async def do_reconfigure(self, partial_config) -> str:
 
-        # parameters that are not possible to configure
+        # parameters that are not possible to reconfigure
 
         if "setup_type" in partial_config.get_keys():
             raise ValueError("Changing the setup type (gecco/cmod) is not possible, restart the satellite")
@@ -247,15 +250,23 @@ class ASTEP(Satellite):
 
         # injection parameters
 
-        if "injection_row" in partial_config.get_keys() or "injection_col" in partial_config.get_keys():
+        if "injection_row" in partial_config.get_keys() or "injection_col" in partial_config.get_keys() or "injection_layer" in partial_config.get_keys() or "injection_chip" in partial_config.get_keys():
+            # if injection was going on previously, we need to disable the pixel that we were injecting into
+            if self.inject:
+                self.boardDriver.asics[self.injection_layer].disable_pixel(row=self.injection_row, col=self.injection_col)
+
             if "injection_row" in partial_config.get_keys():
                 self.injection_row = partial_config["injection_row"]
             if "injection_col" in partial_config.get_keys():
                 self.injection_col = partial_config["injection_col"]
+            if "injection_chip" in partial_config.get_keys():
+                self.injection_chip = partial_config["injection_chip"]
+            if "injection_layer" in partial_config.get_keys():
+                self.injection_col = partial_config["injection_layer"]
+
             new_inject = True if self.injection_row is not None and self.injection_col is not None else False
-            self.log.info(f"New injection pixel is {new_inject} (old: {self.inject})")
-            if self.inject:
-                self.astro.disable_pixel(self.inject[1], self.inject[0])
+            self.log.info(f"Injection into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row}, col {self.injection_col}")
+
             self.inject = new_inject
             if self.inject:
                 self.astro.injection_row = self.injection_row
@@ -366,7 +377,7 @@ class ASTEP(Satellite):
             counts = self.nbytes_to_read_out if self.nbytes_to_read_out is not None else buffer_size
             readout = await self.boardDriver.readoutReadBytes(counts)
             if buffer_size > 0: #if there is data contained in the readout stream
-                self.bitfile.write(buffer_size.to_bytes(4, byteorder='big'))
+                self.bitfile.write(buffer_size.to_bytes(2, byteorder='little'))
                 self.bitfile.write(readout)
         return "Finished data acquisition"
 
