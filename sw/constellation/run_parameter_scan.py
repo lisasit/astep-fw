@@ -73,7 +73,7 @@ def main(args):
         if not os.path.exists(dir_to_check):
             new_combinations = combinations
             continue
-        filenames = [filename for filename in os.listdir(dir_to_check) if '.bin' in filename and outfile_prefix_format.format(combination) in filename]
+        filenames = [filename for filename in os.listdir(dir_to_check) if '.bin' in filename and outfile_prefix_format.format(**combination) in filename]
         if len(filenames) == 0:
             new_combinations.append(combination)
 
