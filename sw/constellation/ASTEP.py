@@ -45,13 +45,8 @@ class ASTEP(Satellite):
         pathdelim = os.path.sep
         self.config_directory = config.setdefault("config_directory", f"{os.getcwd()}{pathdelim}scripts{pathdelim}config")
         self.chip_configs = config["chip_configs"]
-        self.chip_configs = [self.config_directory + pathdelim + config + '.yml' for config in self.chip_configs]
-        if len(self.chip_configs) > len(self.chips_per_row):
-            self.chips_per_row = [self.chips_per_row[0]]*len(self.chip_configs)
-            if len(self.chips_per_row) > 1:
-                self.log.warning(f"Number of chips per row not provided for every layer - default to {self.chips_per_row[0]} for all {len(self.chip_configs)} layers")
-        elif len(self.chip_configs) < len(self.chips_per_row):
-            raise ValueError("You need to provide one yaml configuration file for every chipsPerRow argument")
+
+        self.find_chip_configs()
 
         self.nlayers = len(self.chip_configs)
 
@@ -82,6 +77,15 @@ class ASTEP(Satellite):
         self.log.debug(f'Configuration:\n {json.dumps(config.get_dict(), indent=1)}')
         self.open_board_driver()
         self.log.info(f'Board driver successfully opened')
+
+    def find_chip_configs(self):
+        self.chip_configs = [self.config_directory + pathdelim + config + '.yml' for config in self.chip_configs]
+        if len(self.chip_configs) > len(self.chips_per_row):
+            self.chips_per_row = [self.chips_per_row[0]]*len(self.chip_configs)
+            if len(self.chips_per_row) > 1:
+                self.log.warning(f"Number of chips per row not provided for every layer - default to {self.chips_per_row[0]} for all {len(self.chip_configs)} layers")
+        elif len(self.chip_configs) < len(self.chips_per_row):
+            raise ValueError("You need to provide one yaml configuration file for every chipsPerRow argument")
 
     @async_run
     async def open_board_driver(self):
@@ -150,14 +154,7 @@ class ASTEP(Satellite):
                 self.log.error(f"Injection arguments layer={self.injection_layer}, chip={self.injection_chip} invalid. Cannot initialize injection.")
                 self.inject = False
 
-    @async_run
-    async def do_launching(self) -> str:
-        await self.boardDriver.enableSensorClocks(flush = True)
-        await self.boardDriver.layersConfigFPGATimestampFrequency(targetFrequencyHz = 1000000, flush = True)
-        await self.boardDriver.layersConfigFPGATimestamp(enable = True, force = False, source_match_counter = True, source_external = False, flush = True)
-        await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush = True)
-        await self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True)
-
+    async def setup_voltages(self):
         if self.setup_type == "gecco":
             voltage_board = self.boardDriver.geccoGetVoltageBoard()
             self.log.debug(f'dacvalues = {voltage_board.dacvalues}')
@@ -168,6 +165,7 @@ class ASTEP(Satellite):
             await voltage_board.update()
             self.log.info('Voltage board initialized')
 
+    def setup_asics(self):
         try:
             for layer, (nchips, config) in enumerate(zip(self.chips_per_row, self.chip_configs)):
                 self.log.debug(f'Setting up layer {layer} chips per row {nchips} config {config}')
@@ -177,10 +175,7 @@ class ASTEP(Satellite):
             raise e
         self.log.info(f'{len(self.boardDriver.asics)} ASIC driver(s) instanciated')
 
-        await self.setup_injection()
-
-        self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
-
+    async def write_configuration(self):
         await self.board_driver_print_status()
 
         for layer in range(self.nlayers):
@@ -206,14 +201,34 @@ class ASTEP(Satellite):
                     await self.boardDriver.layersDeselectSPI(flush=True)#Unset chipSelect
         # Flush old data
         await self.board_driver_buffer_flush()#Exit with hold active and manages chipselect itself
+
+    @async_run
+    async def do_launching(self) -> str:
+        await self.boardDriver.enableSensorClocks(flush = True)
+        await self.boardDriver.layersConfigFPGATimestampFrequency(targetFrequencyHz = 1000000, flush = True)
+        await self.boardDriver.layersConfigFPGATimestamp(enable = True, force = False, source_match_counter = True, source_external = False, flush = True)
+        await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush = True)
+        await self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True)
+
+        await self.setup_voltages()
+
+        self.setup_asics()
+
+        await self.setup_injection()
+
+        self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
+
+        await self.write_configuration()
+
         #benchtest
-        for layer in range(self.nlayers):
-            await self.boardDriver.setLayerConfig(layer = layer , reset = False , autoread  = self.autoread, hold=False, flush = True )
+        # for layer in range(self.nlayers):
+        #     await self.boardDriver.setLayerConfig(layer = layer , reset = False , autoread  = self.autoread, hold=False, flush = True )
         self.finalize_config()
         return f"AstroPix is configured"
 
     @async_run
     async def do_reconfigure(self, partial_config) -> str:
+        # When functions are called, the order is the same as in the do_launching method
 
         # parameters that are not possible to reconfigure
 
@@ -248,103 +263,115 @@ class ASTEP(Satellite):
             self.autoread = partial_config["autoread"]
             self.log.info(f"Now {'reading' if self.autoread else 'not reading'} the chip data")
 
-        # injection parameters
+        # voltage board parameters
 
-        if "injection_row" in partial_config.get_keys() or "injection_col" in partial_config.get_keys() or "injection_layer" in partial_config.get_keys() or "injection_chip" in partial_config.get_keys():
-            # if injection was going on previously, we need to disable the pixel that we were injecting into
-            if self.inject:
-                self.boardDriver.asics[self.injection_layer].disable_pixel(row=self.injection_row, col=self.injection_col)
-
-            if "injection_row" in partial_config.get_keys():
-                self.injection_row = partial_config["injection_row"]
-            if "injection_col" in partial_config.get_keys():
-                self.injection_col = partial_config["injection_col"]
-            if "injection_chip" in partial_config.get_keys():
-                self.injection_chip = partial_config["injection_chip"]
-            if "injection_layer" in partial_config.get_keys():
-                self.injection_col = partial_config["injection_layer"]
-
-            new_inject = True if self.injection_row is not None and self.injection_col is not None else False
-            self.log.info(f"Injection into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row}, col {self.injection_col}")
-
-            self.inject = new_inject
-            if self.inject:
-                self.astro.injection_row = self.injection_row
-                self.astro.injection_col = self.injection_col
-                self.astro.enable_pixel(self.inject[1], self.inject[0])
-                self.astro.enable_injection(self.inject[1], self.inject[0])
-            call_asic_init = True
-
-        call_init_injection = False
-        if "injection_voltage" in partial_config.get_keys():
-            self.injection_voltage = partial_config["injection_voltage"]
-            call_init_injection = True
-            self.log.info(f"New injection voltage: {self.injection_voltage}")
-
-        if "injection_period" in partial_config.get_keys():
-            self.injection_period = partial_config["injection_period"]
-            call_init_injection = True
-            self.log.info(f"New injection period: {self.injection_period}")
-
-        if "injection_clkdiv" in partial_config.get_keys():
-            self.injection_clkdiv = partial_config["injection_clkdiv"]
-            call_init_injection = True
-            self.log.info(f"New injection clkdiv: {self.injection_clkdiv}")
-
-        if "injection_initdelay" in partial_config.get_keys():
-            self.injection_initdelay = partial_config["injection_initdelay"]
-            call_init_injection = True
-            self.log.info(f"New injection initdelay: {self.injection_initdelay}")
-
-        if "injection_cycle" in partial_config.get_keys():
-            self.injection_cycle = partial_config["injection_cycle"]
-            call_init_injection = True
-            self.log.info(f"New injection cycle: {self.injection_cycle}")
-
-        if "injection_pulsesperset" in partial_config.get_keys():
-            self.injection_pulsesperset = partial_config["injection_pulsesperset"]
-            call_init_injection = True
-            self.log.info(f"New injection pulsesperset: {self.injection_pulsesperset}")
-
-        if call_init_injection:
-            self.astro.init_injection(inj_voltage=self.injection_voltage, onchip=self.injection_onchip, inj_period=self.injection_period, clkdiv=self.injection_clkdiv, initdelay=self.injection_initdelay, cycle=self.injection_cycle, pulseperset=self.injection_pulsesperset)
-
-        call_asic_init = False
-
-        if "chip_configs" in partial_config.get_keys():
-            self.chip_config = partial_config["chip_configs"]
-            call_asic_init = True
-            self.log.info(f"New config(s) for the chip(s): {self.chip_configs}")
-
-        if "analog" in partial_config.get_keys():
-            self.analog = partial_config["analog"]
-            call_asic_init = True
-            self.astro.asic.enable_ampout_col(self.analog)
-            self.log.info(f"New analog output column: {self.analog}")
-
-
-
-
-
-        call_init_voltages = False
+        call_setup_voltages = False
         if "threshold" in partial_config.get_keys():
             self.threshold = partial_config["threshold"]
-            call_init_voltages = True
+            call_setup_voltages = True
             self.log.info(f"New threshold: {self.threshold}")
 
         if "threshold_pmos" in partial_config.get_keys():
             self.threshold_pmos = partial_config["threshold_pmos"]
-            call_init_voltages = True
+            call_setup_voltages = True
             self.log.info(f"New threshold_pmos: {self.threshold_pmos}")
 
-        if call_init_voltages:
-            self.astro.init_voltages(vthreshold=self.threshold, dacvals=(8, [self.threshold_pmos/1000, 0, 1.1, 1, 0, 0, 1, self.threshold/1000]))
+        if call_setup_voltages:
+            await self.setup_voltages()
 
+        # new chip configs
+        call_setup_asics = False
+        if "chip_configs" in partial_config.get_keys():
+            self.chip_configs = partial_config["chip_configs"]
+            self.log.info(f"New config(s) for the chip(s): {self.chip_configs}")
+            call_setup_asics = True
+        if "config_directory" in partial_config.get_keys():
+            self.config_directory = partial_config["config_directory"]
+            self.log.info(f"New directory with the configs: {self.config_directory}")
+            call_setup_asics = True
+        if call_setup_asics:
+            self.find_chip_configs()
+            self.setup_asics()
 
+        # injection parameters
+
+        call_setup_injection = False
+        if "injection_row" in partial_config.get_keys():
+            self.injection_row = partial_config["injection_row"]
+            call_setup_injection = True
+
+        if "injection_col" in partial_config.get_keys():
+            self.injection_col = partial_config["injection_col"]
+            call_setup_injection = True
+
+        if "injection_chip" in partial_config.get_keys():
+            self.injection_chip = partial_config["injection_chip"]
+            call_setup_injection = True
+
+        if "injection_layer" in partial_config.get_keys():
+            self.injection_layer = partial_config["injection_layer"]
+            call_setup_injection = True
+
+        if "injection_voltage" in partial_config.get_keys():
+            self.injection_voltage = partial_config["injection_voltage"]
+            call_setup_injection = True
+            self.log.info(f"New injection voltage: {self.injection_voltage}")
+
+        if "injection_period" in partial_config.get_keys():
+            self.injection_period = partial_config["injection_period"]
+            call_setup_injection = True
+            self.log.info(f"New injection period: {self.injection_period}")
+
+        if "injection_clkdiv" in partial_config.get_keys():
+            self.injection_clkdiv = partial_config["injection_clkdiv"]
+            call_setup_injection = True
+            self.log.info(f"New injection clkdiv: {self.injection_clkdiv}")
+
+        if "injection_initdelay" in partial_config.get_keys():
+            self.injection_initdelay = partial_config["injection_initdelay"]
+            call_setup_injection = True
+            self.log.info(f"New injection initdelay: {self.injection_initdelay}")
+
+        if "injection_cycle" in partial_config.get_keys():
+            self.injection_cycle = partial_config["injection_cycle"]
+            call_setup_injection = True
+            self.log.info(f"New injection cycle: {self.injection_cycle}")
+
+        if "injection_pulsesperset" in partial_config.get_keys():
+            self.injection_pulsesperset = partial_config["injection_pulsesperset"]
+            call_setup_injection = True
+            self.log.info(f"New injection pulsesperset: {self.injection_pulsesperset}")
+
+        if call_setup_injection:
+            # if injection was going on previously and the chip was not reconfigured, we need to disable the pixel that we were injecting into
+            if self.inject and not call_setup_asics:
+                self.boardDriver.asics[self.injection_layer].disable_pixel(row=self.injection_row, col=self.injection_col)
+            self.inject = True if self.injection_row is not None and self.injection_col is not None else False
+            self.log.info(f"Injection into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row}, col {self.injection_col}")
+            await self.setup_injection()
+
+        # analog output
+
+        call_enable_ampout = False
+        if "analog_layer" in partial_config.get_keys():
+            self.analog_layer = partial_config["analog_layer"]
+            call_enable_ampout = True
+
+        if "analog_chip" in partial_config.get_keys():
+            self.analog_chip = partial_config["analog_chip"]
+            call_enable_ampout = True
+
+        if "analog_col" in partial_config.get_keys():
+            self.analog_col = partial_config["analog_col"]
+            call_enable_ampout = True
+
+        if call_enable_ampout:
+            self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
+            self.log.info(f"New analog output layer {self.analog_layer}, chip {self.analog_chip}, column {self.analog_col}")
 
         # if call_asic_init:
         self.log.info(f"Reinitializing the chip")
-        self.astro.asic_update()
+        await self.write_configuration()
         self.finalize_config()
         return "AstroPix is reinitialized"
 
