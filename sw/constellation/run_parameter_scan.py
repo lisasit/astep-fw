@@ -91,7 +91,7 @@ def main(args):
         print(info_format.format(**combination))
         recfg = combination.copy()
         recfg['outdir'] = output_directory_format.format(**combination)
-        refg['outfile_prefix'] = outfile_prefix_format.format(**combination)
+        recfg['outfile_prefix'] = outfile_prefix_format.format(**combination)
 
         os.makedirs(recfg['outdir'], exist_ok=True)
         constellation.ASTEP.reconfigure(recfg)
