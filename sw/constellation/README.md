@@ -78,4 +78,63 @@ The list of available configuration options:
 You can choose which configuration file to use when initializing the satellite in MissionControl
 |`nbytes_to_read_out` | int | `None` | How many bytes per FPGA readout to read (1 - 4098). If None, everything that is there is read out | `-r` `--readout`|
 
+# Running automated parameter scans
 
+`run_parameter_scan.py` allows to run automated parameter scans using a `ScriptableController` class from Constellation. Before running, modify the part of the `run_parameter_scan.py` script according to the goals of the scan. 
+## Configuring the scan
+The part where edits need to be made is marked with comments. Here it is with some instructions:
+```<python>
+    ######################
+    ## This is the only place where changes need to be made for different parameter scans
+    ###################
+
+    # parameters to iterate over
+    parameters = {
+        'injection_row' : [8],
+        'injection_col' : [13],
+        'injection_voltage' : [0, 400, 600, 800],
+        'threshold' : [900 + i*10 for i in range((1600 - 900)//10 + 1)]
+    }
+
+    # time to stay at each parameter
+    wait_time = 1
+
+    # directory for the output files
+    output_directory_format = '/media/teleuser/4TB/astropix/threshold_scans_astep_test/vinj{injection_voltage}/{injection_row}_{injection_col}/raw_data'
+
+    # output files will be located in this directory with names
+    # key1_value1_key2_value2_ ... _date_and_time.bin
+    # key and value pairs will be taken from the parameters dictionary and ordered alphabetically
+
+    outfile_prefix_format = '_'.join(f'{key}_{{{key}}}' for key in sorted(parameters.keys()))
+
+    ###########################################
+    ## End of place to edit parameters
+    ###########################################
+```
+
+- `parameters` dict contains values of all parameters that you want to run for. A run will be started for all possible combinations of the parameters. The keys in the dictionary should match the keys for the TOML configuration file defined above
+- `wait_time` is the duration of each run in seconds
+- `output_directory_format` is the format string specifying where to save the results of the scans. It can contain parameter names in curly brackets, which will then be substituted with the values of the parameters. For example, if `output_directory_format` is `my_scan/{injection_row}_{injection_col}`, the results for scans with injections into row 8 column 13 will be saved into `my_scan/8_13`
+- `outfile_prefix_format` is the format string for the prefix for the output files. By default it will be constructed as `key1_value1_key2_value2 ...` with keys sorted alphabetically, but feel free to change it. For example, for a combination of parameters
+  ```<python>
+    {
+        'injection_row' : 8,
+        'injection_col' : 13,
+        'injection_voltage' : 400,
+        'threshold' : 1250
+    }
+  ```
+  the files will have a prefix `injection_col_13_injection_row_8_injection_voltage_400_threshold_1250`
+
+## Running the scan
+In one terminal tab start the ASTEP satellite from the `sw` directory with 
+```
+python constellation/__main__.py -g astropix
+```
+In another tab start the parameter scan script from the `sw` directory with 
+```
+python constellation/run_parameter_scan.py -c /path/to/TOML/config
+```
+Here you need to provide a TOML config with all required parameter for the initial configuration. Only the parameters for the scan will be reconfigured during the run, the rest will stay as they were in this initial config file
+  
