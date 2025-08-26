@@ -43,7 +43,7 @@ class Decoder:
         self.legacy = legacy
 
     def write_hits_to_file(self, filename):
-        #print(f'Writing {len(self.hits)} hits')
+        # print(f'Writing {len(self.hits)} hits to  {filename}')
         with uproot.recreate(filename) as root_file:
             result_dict = {}
             for attr in Hit().get_dict().keys():
@@ -86,6 +86,8 @@ class Decoder:
 
 
     def check_packet(self, packet):
+        if int(packet[0]) > 16:
+            return False
         return True
         # 2nd bit in byte 1 is reserved, so has to be 0
         if packet[1] & 0b00000010:
