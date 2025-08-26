@@ -220,8 +220,8 @@ class ASTEP(Satellite):
         await self.write_configuration()
 
         #benchtest
-        # for layer in range(self.nlayers):
-        #     await self.boardDriver.setLayerConfig(layer = layer , reset = False , autoread  = self.autoread, hold=False, flush = True )
+        for layer in range(self.nlayers):
+            await self.boardDriver.setLayerConfig(layer = layer , reset = False , autoread  = self.autoread, hold=False, flush = True )
         self.finalize_config()
         return f"AstroPix is configured"
 
