@@ -78,26 +78,27 @@ class ASTEP(Satellite):
         self.log.info(f'Board driver successfully opened')
 
     def find_chip_configs(self):
-        self.chip_configs = [self.config_directory + os.path.sep + config + '.yml' for config in self.chip_configs]
-        if len(self.chip_configs) > len(self.chips_per_row):
-            self.chips_per_row = [self.chips_per_row[0]]*len(self.chip_configs)
+        self.chip_config_paths = [self.config_directory + os.path.sep + config + '.yml' for config in self.chip_configs]
+        if len(self.chip_config_paths) > len(self.chips_per_row):
+            self.chips_per_row = [self.chips_per_row[0]]*len(self.chip_config_paths)
             if len(self.chips_per_row) > 1:
-                self.log.warning(f"Number of chips per row not provided for every layer - default to {self.chips_per_row[0]} for all {len(self.chip_configs)} layers")
-        elif len(self.chip_configs) < len(self.chips_per_row):
+                self.log.warning(f"Number of chips per row not provided for every layer - default to {self.chips_per_row[0]} for all {len(self.chip_config_paths)} layers")
+        elif len(self.chip_config_paths) < len(self.chips_per_row):
             raise ValueError("You need to provide one yaml configuration file for every chipsPerRow argument")
 
     @async_run
     async def open_board_driver(self):
-        if self.setup_type == "gecco":
-            self.boardDriver = drivers.boards.getGeccoFTDIDriver()
-            # asyncio.run(self.astro.open_fpga(cmod=False, uart=False))
-        elif setup_type == "cmod":
-            self.boardDriver = drivers.boards.getCMODUartDriver("COM6")
-            # asyncio.run(self.astro.open_fpga(cmod=True, uart=True))
-        else:
-            raise ValueError(f"Unknown setup type {self.setup_type}, should be 'gecco' or 'cmod'")
+        if not hasattr(self, 'boardDriver'):
+            if self.setup_type == "gecco":
+                self.boardDriver = drivers.boards.getGeccoFTDIDriver()
+                # asyncio.run(self.astro.open_fpga(cmod=False, uart=False))
+            elif setup_type == "cmod":
+                self.boardDriver = drivers.boards.getCMODUartDriver("COM6")
+                # asyncio.run(self.astro.open_fpga(cmod=True, uart=True))
+            else:
+                raise ValueError(f"Unknown setup type {self.setup_type}, should be 'gecco' or 'cmod'")
 
-        await self.boardDriver.open()
+            await self.boardDriver.open()
         fwid = await self.boardDriver.readFirmwareID()
         self.log.info(f'FW ID: {fwid}')
 
@@ -166,7 +167,7 @@ class ASTEP(Satellite):
 
     def setup_asics(self):
         try:
-            for layer, (nchips, config) in enumerate(zip(self.chips_per_row, self.chip_configs)):
+            for layer, (nchips, config) in enumerate(zip(self.chips_per_row, self.chip_config_paths)):
                 self.log.debug(f'Setting up layer {layer} chips per row {nchips} config {config}')
                 self.boardDriver.setupASIC(version = self.chip_version, row = layer, chipsPerRow = nchips , configFile = config )
         except FileNotFoundError as e :
@@ -204,13 +205,16 @@ class ASTEP(Satellite):
         for layer in range(self.nlayers):
             await self.boardDriver.setLayerConfig(layer = layer , reset = False , autoread  = self.autoread, hold=False, flush = True )
 
-    @async_run
-    async def do_launching(self) -> str:
+    async def setup_clocks(self):
         await self.boardDriver.enableSensorClocks(flush = True)
         await self.boardDriver.layersConfigFPGATimestampFrequency(targetFrequencyHz = 1000000, flush = True)
         await self.boardDriver.layersConfigFPGATimestamp(enable = True, force = False, source_match_counter = True, source_external = False, flush = True)
         await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush = True)
         await self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True)
+
+    @async_run
+    async def do_launching(self) -> str:
+        await self.setup_clocks()
 
         await self.setup_voltages()
 
@@ -261,6 +265,15 @@ class ASTEP(Satellite):
             self.autoread = partial_config["autoread"]
             self.log.info(f"Now {'reading' if self.autoread else 'not reading'} the chip data")
 
+        # clock-related parameters
+        call_setup_clocks = False
+        if "spi_clkdiv" in partial_config.get_keys():
+            self.spi_clkdiv = partial_config["spi_clkdiv"]
+            call_setup_clocks = True
+
+        if call_setup_clocks:
+            await self.setup_clocks()
+
         # voltage board parameters
 
         call_setup_voltages = False
@@ -287,7 +300,7 @@ class ASTEP(Satellite):
             self.config_directory = partial_config["config_directory"]
             self.log.info(f"New directory with the configs: {self.config_directory}")
             call_setup_asics = True
-        if call_setup_asics:
+        if call_setup_asics or call_setup_clocks:
             self.find_chip_configs()
             self.setup_asics()
 
@@ -340,7 +353,7 @@ class ASTEP(Satellite):
             call_setup_injection = True
             self.log.info(f"New injection pulsesperset: {self.injection_pulsesperset}")
 
-        if call_setup_injection:
+        if call_setup_injection or call_setup_clocks:
             # if injection was going on previously and the chip was not reconfigured, we need to disable the pixel that we were injecting into
             if self.inject and not call_setup_asics:
                 self.boardDriver.asics[self.injection_layer].disable_pixel(row=self.injection_row, col=self.injection_col, chip=self.injection_chip)
@@ -363,7 +376,7 @@ class ASTEP(Satellite):
             self.analog_col = partial_config["analog_col"]
             call_enable_ampout = True
 
-        if call_enable_ampout:
+        if call_enable_ampout or call_setup_clocks:
             self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
             self.log.info(f"New analog output layer {self.analog_layer}, chip {self.analog_chip}, column {self.analog_col}")
 
@@ -398,6 +411,10 @@ class ASTEP(Satellite):
                 for layer in range(self.nlayers):
                     await self.boardDriver.writeLayerBytes(layer = layer, bytes = [0x00] * 255, flush=True)
             buffer_size = await self.boardDriver.readoutGetBufferSize()
+            self.log.debug(f'buffer size = {buffer_size}')
+            if buffer_size > 8000:
+                self.log.error(f"Buffer size too big ({buffer_size}), probably something went wrong with the readout")
+                continue
             counts = self.nbytes_to_read_out if self.nbytes_to_read_out is not None else buffer_size
             readout = await self.boardDriver.readoutReadBytes(counts)
             if buffer_size > 0: #if there is data contained in the readout stream
