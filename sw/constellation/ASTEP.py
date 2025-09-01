@@ -17,6 +17,7 @@ import os
 import asyncio
 import json
 import asyncio
+import toml
 
 class ASTEP(Satellite):
     """Satellite for controlling an AstroPix chip"""
@@ -442,3 +443,9 @@ class ASTEP(Satellite):
             self.bitfile.close()
         self.bitfile = open(bitpath, 'wb')
         self.log.info(f'Bitfile with data: {bitpath}')
+
+        # save Constellation config as well
+        tomlpathout = self.outdir + '/AstroPix_Constellation_' + time_config + '.toml'
+        with open(tomlpathout, 'w') as toml_file:
+            toml_file.write(f'[satellites.{self.name}]\n')
+            toml.dump(self.get_config()[1], toml_file)
