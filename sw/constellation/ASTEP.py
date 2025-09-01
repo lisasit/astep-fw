@@ -18,6 +18,7 @@ import asyncio
 import json
 import asyncio
 import toml
+import yaml
 
 class ASTEP(Satellite):
     """Satellite for controlling an AstroPix chip"""
@@ -426,14 +427,29 @@ class ASTEP(Satellite):
     def finalize_config(self):
         # Save final configuration to output file
         time_config=time.strftime("%Y%m%d-%H%M%S")
-        # ymlpathout = self.outdir +"/"+self.chip_config+"_"+time_config+".yml"
-        # try:
-        #     self.astro.write_conf_to_yaml(ymlpathout)
-        # except FileNotFoundError:
-        #     ypath = self.chip_config.split('/')
-        #     ymlpathout = self.outdir + "/" + ypath[1] + "_" + time_config + ".yml"
-        #     self.astro.write_conf_to_yaml(ymlpathout)
-        # self.log.info(f'Configuration saved to file {ymlpathout}')
+
+        for layer in range(self.nlayers):
+            filename = f"{self.outdir}/chip_config_layer{layer}_{time_config}.yml"
+            asic = self.boardDriver.asics[layer]
+            dicttofile ={asic.chip:
+                {
+                    "telescope": {"nchips": asic.num_chips},
+                    "geometry": {"cols": asic.num_cols, "rows": asic.num_rows}
+                }
+            }
+
+            if asic.num_chips > 1:
+                for chip in range(asic.num_chips):
+                    dicttofile[asic.chip][f'config_{chip}'] = asic.asic_config[f'config_{chip}']
+            else:
+                dicttofile[asic.chip]['config_0'] =asic.asic_config
+
+            with open(f"{filename}", "w", encoding="utf-8") as stream:
+                try:
+                    yaml.dump(dicttofile, stream, default_flow_style=False, sort_keys=False)
+
+                except yaml.YAMLError as exc:
+                    logger.error(exc)
 
         # Prepare text files/logs
         fname = "" if not self.outfile_prefix else self.outfile_prefix + "_"
