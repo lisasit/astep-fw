@@ -3,6 +3,9 @@
 import binascii
 from binary_matcher import Matcher, Hit
 import uproot
+import os
+import toml
+import yaml
 
 class HalfHit:
     def __init__(self):
@@ -32,10 +35,67 @@ class HalfHit:
             self.get_tot_us()
         return self.__dict__
 
+def flatten(to_flatten):
+    result_dict = {}
+    if isinstance(to_flatten, dict):
+        for_iter = to_flatten.keys()
+    elif isinstance(to_flatten, list):
+        for_iter = range(len(to_flatten))
+    else:
+        return to_flatten
+
+    for i in for_iter:
+        flat = flatten(to_flatten[i])
+        if not isinstance(flat, dict):
+            result_dict[f'{i}'] = flat
+        else:
+            for new_key in flat:
+                result_dict[f'{i}/{new_key}'] = flat[new_key]
+    return result_dict
+
+def prepare_dict_for_root(dict_to_prepare):
+    result_dict = flatten(dict_to_prepare)
+    for key in result_dict:
+        result_dict[key] = [result_dict[key]]
+    return result_dict
+
 class Decoder:
     #I did not add the code for split hits at the endges of the readout blocks. Will add in the future if necessary
-    def __init__(self, bin_filename, legacy=False):
+    def __init__(self, bin_filename, constellation_config_filename=None, chip_config_filenames=None, legacy=False):
+        """
+        constellation_config_filename and chip_config_filenames can be added to provide metadata about the run that will be saved to the root file. If they are not provided, Decoder will try to look for a .toml (for the constellation config) and all .yml (for the chip configs) files with the same timestamp in the same directory as the binary file. If they are not found, the metadata is not written
+        """
+        print(f'Decoding {bin_filename}')
         self.bin_file = open(bin_filename, 'rb')
+
+        if constellation_config_filename is None or chip_config is None:
+            timestamp = bin_filename.split('/')[-1].split('_')[-1].replace('.bin', '')
+            bin_directory = '/'.join(bin_filename.split('/')[:-1])
+            same_timestamp_files = [filename for filename in os.listdir(bin_directory) if timestamp in filename]
+
+            def find_fitting_file(file_extension):
+                fitting_filenames = [filename for filename in same_timestamp_files if filename.endswith(file_extension)]
+                if len(fitting_filenames) != 0:
+                    print(f'Found {file_extension} config(s): {fitting_filenames}')
+                    return [bin_directory + '/' + filename for filename in fitting_filenames]
+                else:
+                    print(f'{file_extension} config(s) not provided and could not be automatically identified')
+                return None
+
+            if constellation_config_filename is None:
+                constellation_config_filename = find_fitting_file('.toml')
+                if constellation_config_filename is not None:
+                    if len(constellation_config_filename) > 1:
+                        print('Several possible constellation configs, will not choose one, will skip this metadata')
+                        constellation_config_filename = None
+                    else:
+                        constellation_config_filename = constellation_config_filename[0]
+
+            if chip_config_filenames is None:
+                chip_config_filenames = find_fitting_file('.yml')
+
+        self.constellation_config_filename = constellation_config_filename
+        self.chip_config_filenames = chip_config_filenames
         self.header_string = b'\x20'
         self.bytes_per_packet = 5
         self.hits = []
@@ -56,6 +116,23 @@ class Decoder:
                     continue
                 result_dict_hh[attr] = [getattr(halfhit, attr) for halfhit in self.halfhits]
             root_file['halfhits'] = result_dict_hh
+
+            if self.constellation_config_filename is not None:
+                with open(self.constellation_config_filename, 'r') as f:
+                    config = toml.load(f)
+                root_file['constellation_config'] = prepare_dict_for_root(config)
+            else:
+                root_file['constellation_config'] = {}
+
+            if self.chip_config_filenames is not None:
+                config = {}
+                for filename in self.chip_config_filenames:
+                    with open(filename, "r", encoding="utf-8") as stream:
+                        key_for_dict = '_'.join(filename.split('/')[-1].replace('.yml', '').split('_')[:-1])
+                        config[key_for_dict] = yaml.safe_load(stream)
+                root_file['chip_config'] = prepare_dict_for_root(config)
+            else:
+                root_file['chip_config'] = {}
 
 
     def decode(self):
