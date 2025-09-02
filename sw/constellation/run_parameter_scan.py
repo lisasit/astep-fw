@@ -38,17 +38,18 @@ def main(args):
 
     # parameters to iterate over
     parameters = {
-        'injection_row' : [0, 8],
-        'injection_col' : [10, 13],
-        'threshold' : [1000],#[1100 + i*10 for i in range((1700-1100)//10 + 1)],
-        'injection_voltage' : [400, 600, 800]
+        # 'injection_row' : range(35),
+        # 'injection_col' : range(3, 35),
+        # 'threshold' : [1100 + i*10 for i in range((1700-1100)//10 + 1)],
+        # 'injection_voltage' : [300, 400, 500]
+        'injection_clkdiv' : [i for i in range(25)]
     }
 
     # time to stay at each parameter
     wait_time = 1
 
     # directory for the output files
-    output_directory_format = '/media/teleuser/4TB/astropix/astep_testing_config/raw_data'
+    output_directory_format = '/media/teleuser/4TB/astropix/readout_saturation_study/clkdiv_scan'
 
     # output files will be located in this directory with names
     # key1_value1_key2_value2_ ... _date_and_time.bin
@@ -69,15 +70,17 @@ def main(args):
     print('Checking existing files...')
     total_combinations = len(combinations)
     dirs_to_check = [output_directory_format.format(**combination) for combination in combinations]
-    for dir_to_check in tqdm(dirs_to_check):
-        toml_filenames = [filename for filename in os.listdir(dir_to_check) if filename.endswith('.toml')]
-        for filename in toml_filenames:
-            old_cfg =load_config(dir_to_check + '/' + filename)
-            try:
-                combination = {key : old_cfg[key] for key in parameters}
-                combinations.remove(combination)
-            except (KeyError, ValueError):
-                pass
+    # for dir_to_check in tqdm(dirs_to_check):
+        # if not os.path.exists(dir_to_check):
+        #     continue
+        # toml_filenames = [filename for filename in os.listdir(dir_to_check) if filename.endswith('.toml')]
+        # for filename in toml_filenames:
+        #     old_cfg =load_config(dir_to_check + '/' + filename)
+        #     try:
+        #         combination = {key : old_cfg[key] for key in parameters}
+        #         combinations.remove(combination)
+        #     except (KeyError, ValueError):
+        #         pass
 
     print(f'{total_combinations - len(combinations)} files exist')
     total_time = wait_time * len(combinations)
@@ -91,13 +94,11 @@ def main(args):
         recfg = combination.copy()
         recfg['outdir'] = output_directory_format.format(**combination)
         recfg['outfile_prefix'] = outfile_prefix_format.format(**combination)
-        print(recfg)
 
         os.makedirs(recfg['outdir'], exist_ok=True)
         constellation.ASTEP.reconfigure(recfg)
         time.sleep(0.5)
-        cfg.update(recfg)
-
+        cfg['satellites']['ASTEP'].update(recfg)
 
         # Wait until ll states are back in the ORBIT state
         ctrl.await_state(SatelliteState.ORBIT)
