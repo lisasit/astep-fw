@@ -13,22 +13,6 @@ from tqdm import tqdm
 from itertools import product
 import toml
 
-def parse_filename(filename):
-    parts = filename.split('_')
-    result_dict = {}
-    i = 0
-    current_key = ''
-    while i <= len(parts) - 2:
-        if not parts[i][0].isdigit():
-            if current_key != '':
-                current_key += '_'
-            current_key += parts[i]
-        else:
-            result_dict[current_key] = parts[i]
-            current_key = ''
-        i += 1
-    return result_dict
-
 def main(args):
     cfg = load_config(args.config)
     group_name = "astropix"
@@ -82,26 +66,22 @@ def main(args):
     total_time = wait_time * len(combinations)
     print(f'The scans will take {total_time} s = {total_time/60} min = {total_time/60/60} h')
 
-    completed_runs = [[[] for i in range(35)] for j in range(35)]
     print('Checking existing files...')
-    existing_files = 0
-    new_combinations = []
-    for combination in tqdm(combinations):
-        dir_to_check = output_directory_format.format(**combination)
-        if not os.path.exists(dir_to_check):
-            new_combinations = combinations
-            continue
-        prefix = outfile_prefix_format.format(**combination)
-        filenames = [filename for filename in os.listdir(dir_to_check) if '.bin' in filename and prefix in filename]
-        if len(filenames) == 0:
-            new_combinations.append(combination)
+    total_combinations = len(combinations)
+    dirs_to_check = [output_directory_format.format(**combination) for combination in combinations]
+    for dir_to_check in tqdm(dirs_to_check):
+        toml_filenames = [filename for filename in os.listdir(dir_to_check) if filename.endswith('.toml')]
+        for filename in toml_filenames:
+            old_cfg =load_config(dir_to_check + '/' + filename)
+            try:
+                combination = {key : old_cfg[key] for key in parameters}
+                combinations.remove(combination)
+            except (KeyError, ValueError):
+                pass
 
-    print(f'{len(combinations) - len(new_combinations)} files exist')
-    combinations = new_combinations
+    print(f'{total_combinations - len(combinations)} files exist')
     total_time = wait_time * len(combinations)
     print(f'New estimated time {total_time} s = {total_time/60} min = {total_time/60/60} h')
-
-    # return
     # print('waiting for you to ramp up the HV')
     # time.sleep(30)
 
