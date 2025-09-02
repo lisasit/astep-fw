@@ -78,6 +78,7 @@ class ASTEP(Satellite):
         self.log.debug(f'Configuration:\n {json.dumps(config.get_dict(), indent=1)}')
         self.open_board_driver()
         self.log.info(f'Board driver successfully opened')
+        self.run_identifier = None
 
     def find_chip_configs(self):
         self.chip_config_paths = [self.config_directory + os.path.sep + config + '.yml' for config in self.chip_configs]
@@ -227,7 +228,6 @@ class ASTEP(Satellite):
         self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
 
         await self.write_configuration()
-        self.finalize_config()
         return f"AstroPix is configured"
 
     @async_run
@@ -385,7 +385,6 @@ class ASTEP(Satellite):
         # if call_asic_init:
         self.log.info(f"Reinitializing the chip")
         await self.write_configuration()
-        self.finalize_config()
         return "AstroPix is reinitialized"
 
     def do_landing(self) -> str:
@@ -393,6 +392,8 @@ class ASTEP(Satellite):
 
     @async_run
     async def do_starting(self, run_identifier: str):
+        self.run_identifier = run_identifier
+        self.create_files_for_run()
         if self.inject:
             await self.boardDriver.getInjector().start()
             return f"Injections into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row} col {self.injection_col} started"
@@ -424,12 +425,11 @@ class ASTEP(Satellite):
                 self.bitfile.write(readout)
         return "Finished data acquisition"
 
-    def finalize_config(self):
+    def create_files_for_run(self):
         # Save final configuration to output file
-        time_config=time.strftime("%Y%m%d-%H%M%S")
 
         for layer in range(self.nlayers):
-            filename = f"{self.outdir}/chip_config_layer{layer}_{time_config}.yml"
+            filename = f"{self.outdir}/chip_config_layer{layer}_{self.run_identifier}.yml"
             asic = self.boardDriver.asics[layer]
             dicttofile ={asic.chip:
                 {
@@ -453,15 +453,9 @@ class ASTEP(Satellite):
 
         # Prepare text files/logs
         fname = "" if not self.outfile_prefix else self.outfile_prefix + "_"
-        bitpath = self.outdir + '/' + fname + time_config + '.bin'
+        bitpath = self.outdir + '/' + fname + self.run_identifier + '.bin'
         # textfiles are always saved so we open it up
         if hasattr(self, 'bitfile'):
             self.bitfile.close()
         self.bitfile = open(bitpath, 'wb')
         self.log.info(f'Bitfile with data: {bitpath}')
-
-        # save Constellation config as well
-        tomlpathout = self.outdir + '/AstroPix_Constellation_' + time_config + '.toml'
-        with open(tomlpathout, 'w') as toml_file:
-            toml_file.write(f'[satellites.{self.name}]\n')
-            toml.dump(self.get_config()[1], toml_file)
