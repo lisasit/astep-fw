@@ -6,6 +6,7 @@ import uproot
 import os
 import toml
 import yaml
+import numpy as np
 
 class HalfHit:
     def __init__(self):
@@ -61,17 +62,24 @@ def prepare_dict_for_root(dict_to_prepare):
 
 class Decoder:
     #I did not add the code for split hits at the endges of the readout blocks. Will add in the future if necessary
-    def __init__(self, bin_filename, constellation_config_filename=None, chip_config_filenames=None, legacy=False, verbose=True):
+    def __init__(self, bin_filename, constellation_config_filename=None, chip_config_filenames=None, legacy=False, verbose=True, max_nreadouts=None):
         """
         constellation_config_filename and chip_config_filenames can be added to provide metadata about the run that will be saved to the root file. If they are not provided, Decoder will try to look for a .toml (for the constellation config) and all .yml (for the chip configs) files with the same timestamp in the same directory as the binary file. If they are not found, the metadata is not written
         """
 
         self.bin_file = open(bin_filename, 'rb')
+        self.max_nreadouts = max_nreadouts
         self.verbose = verbose
         if self.verbose:
             print(f'Decoding {bin_filename}')
 
-        if constellation_config_filename is None or chip_config is None:
+        if constellation_config_filename is not None and self.verbose:
+            print(f'Using provided constellation config file: {constellation_config_filename}')
+
+        if chip_config_filenames is not None and self.verbose:
+            print(f'Using provided chip config files: {chip_config_filenames}')
+
+        if constellation_config_filename is None or chip_config_filenames is None:
             timestamp = bin_filename.split('/')[-1].split('_')[-1].replace('.bin', '')
             bin_directory = '/'.join(bin_filename.split('/')[:-1])
             same_timestamp_files = [filename for filename in os.listdir(bin_directory) if timestamp in filename]
@@ -109,7 +117,13 @@ class Decoder:
         self.legacy = legacy
 
     def write_hits_to_file(self, filename):
-        # print(f'Writing {len(self.hits)} hits to  {filename}')
+        if self.verbose:
+            print(f'Writing data to  {filename}:')
+            print(f'{len(self.hits)} hits')
+            print(f'{len(self.halfhits)} halfhtis')
+            print(f'ratio of hits to halfhits = {len(self.hits)/len(self.halfhits)}')
+            col_hh = [hh for hh in self.halfhits if hh.isCol]
+            print(f'ratio of column to row halfhits = {len(col_hh)/(len(self.halfhits) - len(col_hh))}')
         with uproot.recreate(filename) as root_file:
             result_dict = {}
             for attr in Hit().get_dict().keys():
@@ -139,6 +153,7 @@ class Decoder:
 
     def decode(self):
         readout_id = 0
+        block_lengths = []
         while True:
             block = self.read_block()
             if block is None:
@@ -154,6 +169,19 @@ class Decoder:
             matcher.match()
             self.halfhits += halfhits
             self.hits += matcher.hits
+            if self.verbose:
+                block_lengths.append(len(block))
+                if readout_id % 100 == 0:
+                    print(f'Read {readout_id} readout blocks, average block length is {np.mean(block_lengths)}')
+                    block_lengths = []
+
+            if self.max_nreadouts is not None and readout_id >= self.max_nreadouts:
+                if self.verbose:
+                    print(f'Reached {self.max_nreadouts} readouts, stopping')
+                break
+        if self.verbose:
+            print(f'{readout_id} packets read in total')
+
 
     def read_block(self):
         read_int = self.bin_file.read(2)
