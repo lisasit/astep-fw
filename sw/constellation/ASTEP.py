@@ -172,6 +172,7 @@ class ASTEP(Satellite):
         try:
             for layer, (nchips, config) in enumerate(zip(self.chips_per_row, self.chip_config_paths)):
                 self.log.debug(f'Setting up layer {layer} chips per row {nchips} config {config}')
+                self.boardDriver.asics.clear()
                 self.boardDriver.setupASIC(version = self.chip_version, row = layer, chipsPerRow = nchips , configFile = config )
         except FileNotFoundError as e :
             self.log.error(f'Config File {config} was not found, pass the name of a config file from the scripts/config folder')
@@ -438,11 +439,8 @@ class ASTEP(Satellite):
                 }
             }
 
-            if asic.num_chips > 1:
-                for chip in range(asic.num_chips):
-                    dicttofile[asic.chip][f'config_{chip}'] = asic.asic_config[f'config_{chip}']
-            else:
-                dicttofile[asic.chip]['config_0'] =asic.asic_config
+            for chip in range(asic.num_chips):
+                dicttofile[asic.chip][f'config_{chip}'] = asic.asic_config[f'config_{chip}']
 
             with open(f"{filename}", "w", encoding="utf-8") as stream:
                 try:
