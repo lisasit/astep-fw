@@ -266,7 +266,7 @@ class ASTEP(Satellite):
 
         if "autoread" in partial_config.get_keys():
             self.autoread = partial_config["autoread"]
-            self.log.info(f"Now {'reading' if self.autoread else 'not reading'} the chip data")
+            self.log.info(f"Now {'using' if self.autoread else 'not using'} autoread")
 
         # clock-related parameters
         call_setup_clocks = False
