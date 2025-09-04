@@ -40,22 +40,23 @@ def main(args):
     parameters = {
         # 'injection_row' : range(35),
         # 'injection_col' : range(3, 35),
-        # 'threshold' : [1100 + i*10 for i in range((1700-1100)//10 + 1)],
+        'threshold' : [1300, 1500],
         # 'injection_voltage' : [300, 400, 500]
-        'injection_clkdiv' : [i for i in range(25)]
+        'chip_configs' : [["singlechip_nmos_noisymasked"]]
     }
 
     # time to stay at each parameter
-    wait_time = 1
+    wait_time = 5*60
 
     # directory for the output files
-    output_directory_format = '/media/teleuser/4TB/astropix/readout_saturation_study/clkdiv_scan'
+    output_directory_format = '/media/teleuser/4TB/astropix/sr90_astep/data/raw_data'
 
     # output files will be located in this directory with names
     # key1_value1_key2_value2_ ... _date_and_time.bin
     # key and value pairs will be taken from the parameters dictionary and ordered alphabetically
 
     outfile_prefix_format = '_'.join(f'{key}_{{{key}}}' for key in sorted(parameters.keys()))
+    outfile_prefix_format = 'bias200'
 
     ###########################################
     ## End of place to edit parameters
@@ -104,7 +105,7 @@ def main(args):
         ctrl.await_state(SatelliteState.ORBIT)
 
         time_config=time.strftime("%Y%m%d-%H%M%S")
-        tomlpathout = cfg['outdir'] + '/AstroPix_Constellation_' + time_config + '.toml'
+        tomlpathout = cfg['satellites']['ASTEP']['outdir'] + '/AstroPix_Constellation_' + time_config + '.toml'
         with open(tomlpathout, 'w') as toml_file:
             # toml_file.write(f'[satellites.{self.name}]\n')
             toml.dump(cfg, toml_file)
