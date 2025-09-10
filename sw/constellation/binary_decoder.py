@@ -121,9 +121,9 @@ class Decoder:
             print(f'Writing data to  {filename}:')
             print(f'{len(self.hits)} hits')
             print(f'{len(self.halfhits)} halfhtis')
-            print(f'ratio of hits to halfhits = {len(self.hits)/len(self.halfhits)}')
+            print(f'ratio of hits to halfhits = {len(self.hits)/len(self.halfhits) if len(self.halfhits) != 0 else np.inf}')
             col_hh = [hh for hh in self.halfhits if hh.isCol]
-            print(f'ratio of column to row halfhits = {len(col_hh)/(len(self.halfhits) - len(col_hh))}')
+            print(f'ratio of column to row halfhits = {len(col_hh)/(len(self.halfhits) - len(col_hh)) if len(self.halfhits) != len(col_hh) else np.inf} ({len(col_hh)} col halfhits and {len(self.halfhits) - len(col_hh)} row halfhits)')
         with uproot.recreate(filename) as root_file:
             result_dict = {}
             for attr in Hit().get_dict().keys():
