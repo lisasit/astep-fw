@@ -356,7 +356,7 @@ class ASTEP(Satellite):
             call_setup_injection = True
             self.log.info(f"New injection pulsesperset: {self.injection_pulsesperset}")
 
-        if call_setup_injection or call_setup_clocks:
+        if call_setup_injection or call_setup_clocks or call_setup_asics:
             # if injection was going on previously and the chip was not reconfigured, we need to disable the pixel that we were injecting into
             if self.inject and not call_setup_asics:
                 self.boardDriver.asics[self.injection_layer].disable_pixel(row=self.injection_row, col=self.injection_col, chip=self.injection_chip)
@@ -379,7 +379,7 @@ class ASTEP(Satellite):
             self.analog_col = partial_config["analog_col"]
             call_enable_ampout = True
 
-        if call_enable_ampout or call_setup_clocks:
+        if call_enable_ampout or call_setup_clocks or call_setup_asics:
             self.boardDriver.asics[self.analog_layer].enable_ampout_col(self.analog_chip, self.analog_col, inplace=False)
             self.log.info(f"New analog output layer {self.analog_layer}, chip {self.analog_chip}, column {self.analog_col}")
 
