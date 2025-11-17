@@ -1,12 +1,13 @@
 
-import sys 
-import os 
+import sys
+import os
 
 
 import  rfg.discovery
 import  rfg.cocotb.cocotb_spi
 from    rfg.cocotb.cocotb_uart import UARTIO
 from    rfg.cocotb.cocotb_spi  import SPIIO
+from    rfg.cocotb.cocotb_ftdi  import FTDIFIFOIO
 
 
 from   drivers.boards.board_driver import BoardDriver
@@ -15,25 +16,23 @@ from   drivers.gecco.injectionboard import InjectionBoard
 
 from cocotb.triggers import Timer,RisingEdge
 
-class SimBoard(BoardDriver): 
+class SimBoard(BoardDriver):
 
     def __init__(self,rfg):
         BoardDriver.__init__(self,rfg)
 
 
-    def getVoltageBoard(self,slot : int = 0 ):
+    def getVoltageBoard(self,slot : int = 1):
         vb = VoltageBoard(rfg = self.rfg, slot = slot)
         vb.vsupply  = 2.7
         vb.vcal     = .989
         return vb
 
-    def getInjectionBoard(self,slot : int = 1):
+    def getInjectionBoard(self,slot : int =5):
         ib = InjectionBoard(rfg = self.rfg, slot = slot)
         ib.voltageBoard = None
         return ib
 
-    def getFPGACoreFrequency(self):
-        return 60000000
 
 async def getDriver(dut):
 
@@ -62,7 +61,7 @@ async def getUARTDriver(dut):
 
     return boardDriver
 
-    
+
 async def getSPIDriver(dut):
 
     ## Load RF and Setup UARTIO
@@ -70,7 +69,33 @@ async def getSPIDriver(dut):
 
     ## SPI
     #########
-    rfg_io = SPIIO(dut,msbFirst=False)
+    rfg_io = SPIIO(dut,msbFirst=False,clockPeriod=50)
+    await Timer(10, units="us")
+
+    #rfg.cocotb.cocotb_spi.debug()
+
+    ## Sof Reset
+    #await rfg_io.softReset()
+
+    firmwareRF.withIODriver(rfg_io)
+    #await rfg_io.open()
+    await Timer(10, units="us")
+
+    boardDriver = SimBoard(firmwareRF)
+    await boardDriver.open()
+    await Timer(10, units="us")
+
+
+    return boardDriver
+
+async def getFTDIDriver(dut):
+
+    ## Load RF and Setup UARTIO
+    firmwareRF = rfg.discovery.loadOneFSPRFGOrFail()
+
+    ## SPI
+    #########
+    rfg_io = FTDIFIFOIO(dut)
     await Timer(10, units="us")
 
     #rfg.cocotb.cocotb_spi.debug()
