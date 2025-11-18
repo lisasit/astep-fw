@@ -149,8 +149,10 @@ class BoardDriver:
 
     async def writeRoutingFrame(self, lane: int = 0, firstChipID: int = 0):
         spiBytes = self.getAsic(lane).getRoutingFrame(
-            firstChipID=firstChipID, paddingBytes=self.asics[lane].num_chips - 1 * 2
+            firstChipID=firstChipID,
+            paddingBytes=((self.asics[lane].num_chips - 1) * 2 + 2),
         )
+
         await self.writeSPIBytesToLane(lane=lane, bytes=spiBytes)
 
     async def writeSRAsicConfig(self, lane: int = 0, ckdiv=8, limit: int | None = None):
@@ -619,6 +621,9 @@ class BoardDriver:
             waitForLastChunk(bool,optional): If set to true, when the last chunck is written, return immediately
         """
 
+        logger.info(
+            f"Writing {len(bytes)} bytes to SPI lane {lane}, current buffer size={await getattr(self.rfg, f'read_layer_{lane}_mosi_write_size')()}"
+        )
         # Buffer size is the number of bytes we can write at once in the SPI output buffer
         outputBufferSize = 256
         steps = int(math.ceil(len(bytes) / outputBufferSize))
@@ -638,26 +643,26 @@ class BoardDriver:
             await getattr(self.rfg, f"write_layer_{lane}_mosi_bytes")(chunkBytes, True)
 
             # Wait for the current chunk to be written before sending the next one
-            startTime = time.time()
-            currentTime = time.time()
-
-            if waitForLastChunk is False and steps == chunk:
+            # If wait for Last Chunk is false and it is the last chunk, don't wait
+            # This is not implemented using asyncio.timeout because it doesn't work in simulation
+            if (waitForLastChunk is True and steps == chunk) or chunk < steps:
+                startTime = time.time()
+                currentTime = time.time()
+                # Wait until bufer written out to astropix
                 while (
                     await getattr(self.rfg, f"read_layer_{lane}_mosi_write_size")() > 0
                     and (currentTime - startTime) <= timeout
                 ):
-                    # Update timeout
-                    #
                     currentTime = time.time()
                     pass
 
-            # logger.info("Current MISO Write count=%d",await getattr(self.rfg, f"read_layer_{self.row}_mosi_write_size")())
-            if (currentTime - startTime) > timeout:
-                raise RuntimeError(
-                    "Chunck {}/{} len={} timed out".format(
-                        int(chunk / outputBufferSize + 1), steps, len(chunkBytes)
+                # Test if timeout condition
+                if (currentTime - startTime) > timeout:
+                    raise RuntimeError(
+                        "Chunck {}/{} len={} timed out".format(
+                            int(chunk / outputBufferSize + 1), steps, len(chunkBytes)
+                        )
                     )
-                )
 
     async def getLayerMOSIBytesCount(self, layer: int):
         return await getattr(self.rfg, f"read_layer_{layer}_mosi_write_size")()
