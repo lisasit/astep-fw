@@ -83,6 +83,7 @@ class ASTEP(Satellite):
         self.spi_clkdiv = config.setdefault("spi_clkdiv", 20)
 
         self.nbytes_to_read_out = config.setdefault("nbytes_to_read_out", None)
+        self.use_tlu = config.setdefault("use_tlu", False)
 
         self.lock = asyncio.Lock()
         self.log.debug(f"Configuration:\n {json.dumps(config.get_dict(), indent=1)}")
@@ -305,7 +306,7 @@ class ASTEP(Satellite):
 
     @async_run
     async def do_launching(self) -> str:
-        await self.setup_clocks()
+        await self.setup_clocks(use_tlu=self.use_tlu)
 
         await self.setup_voltages()
 
@@ -371,8 +372,11 @@ class ASTEP(Satellite):
             self.spi_clkdiv = partial_config["spi_clkdiv"]
             call_setup_clocks = True
 
+        if "use_tlu" in partial_config.get_keys():
+            self.use_tlu = partial_config["use_tlu"]
+
         if call_setup_clocks:
-            await self.setup_clocks()
+            await self.setup_clocks(use_tlu=self.use_tlu)
 
         # voltage board parameters
 
@@ -494,7 +498,6 @@ class ASTEP(Satellite):
                 f"New analog output layer {self.analog_layer}, chip {self.analog_chip}, column {self.analog_col}"
             )
 
-        # if call_asic_init:
         self.log.info(f"Reinitializing the chip")
         await self.write_configuration()
         return "AstroPix is reinitialized"
