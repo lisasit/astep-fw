@@ -168,7 +168,7 @@ class BoardDriver:
 
         ## Generate Bit vector for config
         ## If limit is used, retain only a few bits from the resuklt
-        configs = self.getAsic(lane).getConfigBits(msbfirst=False)
+        configs = self.getAsic(lane).getConfigBits(targetChip=0, msbfirst=False)
         bits = []
         for config in configs:
             bits.extend(config)
