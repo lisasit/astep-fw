@@ -255,7 +255,7 @@ class ASTEP(Satellite):
 
         if self.use_shift_register:
             for layer in range(self.nlayers):
-                await self.boardDriver.writeSRAsicConfig(lane=layer)
+                await self.boardDriver.writeSRAsicConfig(lane=layer, ckdiv=16)
         else:
             # Set chip IDs
             await self.boardDriver.layersSelectSPI(flush=True)  # Set chipSelect
@@ -286,7 +286,7 @@ class ASTEP(Satellite):
         # from benchtest
         for layer in range(self.nlayers):
             await self.boardDriver.setLayerConfig(
-                layer=layer, reset=False, autoread=self.autoread, hold=False, flush=True
+                layer=layer, reset=False, autoread=self.autoread, hold=False, flush=True, disableMISO=False
             )
 
     async def setup_clocks(self, use_tlu: bool = False):
