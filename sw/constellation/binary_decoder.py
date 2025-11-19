@@ -135,6 +135,7 @@ class Decoder:
                 if attr == 'tot_us':
                     continue
                 result_dict_hh[attr] = [getattr(halfhit, attr) for halfhit in self.halfhits]
+
             root_file['halfhits'] = result_dict_hh
 
             if self.constellation_config_filename is not None:
@@ -221,6 +222,9 @@ class Decoder:
 
 
     def decode_packet(self, hit_packet, readout_id):
+        if len(hit_packet) > 15:
+            print(f'ERROR, hit packet too long ({len(hit_packet)}), probably something went wrong with splitting packets')
+            return
         try:
             halfhit = HalfHit()
             # byte 0 = length of the packet
@@ -241,8 +245,8 @@ class Decoder:
             halfhit.tot_msb = int(hit_packet[5]) & 0b00001111
             # byte 6 is ToT LSB
             halfhit.tot_lsb = int(hit_packet[6])
-            # bytes 7-11 are the FPGA timestamp
-            halfhit.fpga_ts = int.from_bytes(hit_packet[7:11], 'little')
+            # bytes 7-end are the FPGA timestamp
+            halfhit.fpga_ts = np.uint64(int.from_bytes(hit_packet[7:], 'little'))
 
             # constructing ToT total
             halfhit.tot_total = (halfhit.tot_msb << 8) + halfhit.tot_lsb
