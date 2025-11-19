@@ -95,7 +95,7 @@ class BoardDriver:
         self,
         version: int,
         lanes: int = 1,
-        chipsPerRow: int = 1,
+        chipsPerLane: int = 1,
         configFile: str | None = None,
     ):
         """Configure one or multiple lanes with a single config file
@@ -114,7 +114,7 @@ class BoardDriver:
 
         for i in range(lanes):
             self.setupASIC(
-                version, lane=i, chipsPerLane=chipsPerRow, configFile=configFile
+                version, lane=i, chipsPerLane=chipsPerLane, configFile=configFile
             )
 
     def setupASIC(
@@ -357,7 +357,7 @@ class BoardDriver:
         layer0Cfg = layer0Cfg | (1 << 3)
         await self.rfg.write_layer_0_cfg_ctrl(layer0Cfg, flush)
 
-    async def layersDeselectSPI(self, flush=False):
+    async def layersDeselectSPI(self, flush=True):
         """This helper method deasserts the shared CSN to 1 by deselecting CS on layer 0
         it's a helper to be used only if the hardware uses a shared Chip Select!!
         If any Layer is in autoread mode, chip select will stay asserted
@@ -392,11 +392,14 @@ class BoardDriver:
         layer0Cfg &= ~(1 << 1)
         await self.rfg.write_layer_0_cfg_ctrl(layer0Cfg, flush)
 
-    async def resetLayersFull(self, waitTime: float = 0.5, flush=True):
+    async def resetLayersFull(
+        self, waitTime: float = 0.5, wait: bool = True, flush=True
+    ):
         """Reset all layers because the reset line is shared.
 
         Args:
             waitTime (float):  Reset duration - Default 0.5s
+            wait(bool,optional): Wait before driving reset 1 and 0 - Useful in simulation, asyncio.sleep doesn't work there
         """
         layersCfg = [
             await getattr(self.rfg, f"read_layer_{layer}_cfg_ctrl")()
@@ -407,7 +410,10 @@ class BoardDriver:
             await getattr(self.rfg, f"write_layer_{layer}_cfg_ctrl")(
                 layersCfg[layer], flush
             )
-        await asyncio.sleep(waitTime)
+
+        if wait:
+            await asyncio.sleep(waitTime)
+
         for layer in range(3):
             layersCfg[layer] &= ~(1 << 1)
             await getattr(self.rfg, f"write_layer_{layer}_cfg_ctrl")(
@@ -633,10 +639,10 @@ class BoardDriver:
             # if len(chunkBytes) != 256:
             #    task = asyncio.create_task(asyncio.sleep(20))
             #    await task
-
+            currentChunk = (chunk / outputBufferSize + 1)
             logger.info(
                 "Writing Chunck %d/%d len=%d",
-                (chunk / outputBufferSize + 1),
+                currentChunk,
                 steps,
                 len(chunkBytes),
             )
@@ -645,7 +651,8 @@ class BoardDriver:
             # Wait for the current chunk to be written before sending the next one
             # If wait for Last Chunk is false and it is the last chunk, don't wait
             # This is not implemented using asyncio.timeout because it doesn't work in simulation
-            if (waitForLastChunk is True and steps == chunk) or chunk < steps:
+            if ((waitForLastChunk is True) and currentChunk == steps) or currentChunk < steps:
+
                 startTime = time.time()
                 currentTime = time.time()
                 # Wait until bufer written out to astropix
@@ -724,7 +731,7 @@ class BoardDriver:
         use_tlu: bool,
         tlu_busy_on_t0: bool = False,
         timestamp_size: int = 1,
-        flush: bool = False,
+        flush: bool = True,
     ):
         """
         Configure the FPGA Timestamp to count from the internal match counter, the external TS input or force at each clock cycle
