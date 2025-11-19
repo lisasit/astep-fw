@@ -84,6 +84,7 @@ class ASTEP(Satellite):
 
         self.nbytes_to_read_out = config.setdefault("nbytes_to_read_out", None)
         self.use_tlu = config.setdefault("use_tlu", False)
+        self.fpga_timestamp_size = config.setdefault("fpga_timestamp_size", 1) # 0 : 16, 1 : 32, 2 : 48, 3: 64
 
         self.lock = asyncio.Lock()
         self.log.debug(f"Configuration:\n {json.dumps(config.get_dict(), indent=1)}")
@@ -290,7 +291,7 @@ class ASTEP(Satellite):
                 layer=layer, reset=False, autoread=self.autoread, hold=False, flush=True, disableMISO=False
             )
 
-    async def setup_clocks(self, use_tlu: bool = False):
+    async def setup_clocks(self):
         await self.boardDriver.enableSensorClocks(flush=True)
         await self.boardDriver.layersConfigFPGATimestampFrequency(
             targetFrequencyHz=1000000, flush=True
@@ -298,7 +299,8 @@ class ASTEP(Satellite):
         await self.boardDriver.layersConfigFPGATimestamp(
             enable=True,
             use_divider=True,
-            use_tlu=use_tlu,
+            use_tlu=self.use_tlu,
+            timestamp_size=self.fpga_timestamp_size,
             flush=True,
         )
         await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush=True)
@@ -306,7 +308,7 @@ class ASTEP(Satellite):
 
     @async_run
     async def do_launching(self) -> str:
-        await self.setup_clocks(use_tlu=self.use_tlu)
+        await self.setup_clocks()
 
         await self.setup_voltages()
 
@@ -374,9 +376,14 @@ class ASTEP(Satellite):
 
         if "use_tlu" in partial_config.get_keys():
             self.use_tlu = partial_config["use_tlu"]
+            call_setup_clocks = True
+
+        if "fpga_timestamp_size" in partial_config.get_keys():
+            self.fpga_timestamp_size = partial_config["fpga_timestamp_size"]
+            call_setup_clocks = True
 
         if call_setup_clocks:
-            await self.setup_clocks(use_tlu=self.use_tlu)
+            await self.setup_clocks()
 
         # voltage board parameters
 
