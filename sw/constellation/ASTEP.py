@@ -92,6 +92,17 @@ class ASTEP(Satellite):
         self.log.info(f"Board driver successfully opened")
         self.run_identifier = None
 
+    def get_fpga_ts_size_bits(self):
+        if self.fpga_timestamp_size == 0:
+            return 16
+        if self.fpga_timestamp_size == 1:
+            return 32
+        if self.fpga_timestamp_size == 2:
+            return 48
+        if self.fpga_timestamp_size == 3:
+            return 64
+        return None
+
     def find_chip_configs(self):
         self.chip_config_paths = [
             self.config_directory + os.path.sep + config + ".yml"
@@ -292,7 +303,7 @@ class ASTEP(Satellite):
             )
 
     async def setup_clocks(self):
-        self.log.info(f"Setting up clocks, use_tlu = {self.use_tlu}, fpga_ts size = {16 if self.fpga_timestamp_size == 0 else 32 if self.fpga_timestamp_size == 1 else 48 self.fpga_timestamp_size == 2 else 64 if self.fpga_timestamp_size == 3 else None}")
+        self.log.info(f"Setting up clocks, use_tlu = {self.use_tlu}, fpga_ts size = {self.get_fpga_ts_size_bits()} bits")
         tc = await self.boardDriver.rfg.read_layers_fpga_timestamp_ctrl()
         self.log.info(f'Timestamp config before configuring the timestamp: {tc}')
         await self.boardDriver.enableSensorClocks(flush=True)
