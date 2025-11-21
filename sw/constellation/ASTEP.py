@@ -41,7 +41,7 @@ class ASTEP(Satellite):
         self.outdir = config.setdefault("outdir", "../AstroPix")
         # Ensures output directory exists
         if os.path.exists(self.outdir) == False:
-            os.mkdir(self.outdir)
+            os.makedirs(self.outdir)
         # should be gecco or cmod
         self.setup_type = config["setup_type"]
         self.use_shift_register = config.setdefault("use_shift_register", False)
@@ -292,17 +292,33 @@ class ASTEP(Satellite):
             )
 
     async def setup_clocks(self):
+        self.log.info(f"Setting up clocks, use_tlu = {self.use_tlu}, fpga_ts size = {16 if self.fpga_timestamp_size == 0 else 32 if self.fpga_timestamp_size == 1 else 48 self.fpga_timestamp_size == 2 else 64 if self.fpga_timestamp_size == 3 else None}")
+        tc = await self.boardDriver.rfg.read_layers_fpga_timestamp_ctrl()
+        self.log.info(f'Timestamp config before configuring the timestamp: {tc}')
         await self.boardDriver.enableSensorClocks(flush=True)
         await self.boardDriver.layersConfigFPGATimestampFrequency(
             targetFrequencyHz=1000000, flush=True
         )
         await self.boardDriver.layersConfigFPGATimestamp(
             enable=True,
-            use_divider=True,
+            use_divider=False,
             use_tlu=self.use_tlu,
             timestamp_size=self.fpga_timestamp_size,
             flush=True,
         )
+        tc = await self.boardDriver.rfg.read_layers_fpga_timestamp_ctrl()
+        self.log.info(f'Timestamp config after configuring the timestamp: {tc}')
+        await self.boardDriver.layersConfigFPGATimestamp(
+            enable=True,
+            use_divider=False,
+            use_tlu=self.use_tlu,
+            timestamp_size=self.fpga_timestamp_size,
+            flush=True,
+        )
+        tc = await self.boardDriver.rfg.read_layers_fpga_timestamp_ctrl()
+        self.log.info(f'Timestamp config after configuring the timestamp again: {tc}')
+        currentTS = await self.boardDriver.rfg.read_layers_fpga_timestamp_counter()
+        self.log.info(f'FPGA TS = {currentTS}')
         await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush=True)
         await self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True)
 
