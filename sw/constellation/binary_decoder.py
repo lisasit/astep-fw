@@ -115,6 +115,7 @@ class Decoder:
         self.hits = []
         self.halfhits = []
         self.legacy = legacy
+        self.fpga_ts_lengths = []
 
     def write_hits_to_file(self, filename):
         if self.verbose:
@@ -124,6 +125,7 @@ class Decoder:
             print(f'ratio of hits to halfhits = {len(self.hits)/len(self.halfhits) if len(self.halfhits) != 0 else np.inf}')
             col_hh = [hh for hh in self.halfhits if hh.isCol]
             print(f'ratio of column to row halfhits = {len(col_hh)/(len(self.halfhits) - len(col_hh)) if len(self.halfhits) != len(col_hh) else np.inf} ({len(col_hh)} col halfhits and {len(self.halfhits) - len(col_hh)} row halfhits)')
+            print(f'Derived FPGA timestamp length {int(np.median(self.fpga_ts_lengths))} bytes')
         with uproot.recreate(filename) as root_file:
             result_dict = {}
             for attr in Hit().get_dict().keys():
@@ -225,6 +227,7 @@ class Decoder:
         if len(hit_packet) > 15:
             print(f'ERROR, hit packet too long ({len(hit_packet)}), probably something went wrong with splitting packets')
             return
+        self.fpga_ts_lengths.append(len(hit_packet) - 7)
         try:
             halfhit = HalfHit()
             # byte 0 = length of the packet
