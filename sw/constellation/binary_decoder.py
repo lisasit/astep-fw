@@ -116,6 +116,7 @@ class Decoder:
         self.halfhits = []
         self.legacy = legacy
         self.fpga_ts_lengths = []
+        self.leftovers = bytes()
 
     def write_hits_to_file(self, filename):
         if self.verbose:
@@ -196,13 +197,7 @@ class Decoder:
 
 
     def check_packet(self, packet):
-        if int(packet[0]) > 16:
-            return False
-        return True
-        # 2nd bit in byte 1 is reserved, so has to be 0
-        if packet[1] & 0b00000010:
-            return False
-        if packet[3] & 0b11110000:
+        if len(packet) - 1 != int(packet[0]):
             return False
         return True
 
@@ -210,16 +205,19 @@ class Decoder:
     def split_packets(self, byte_block):
         result_packets = []
         i = 0
-        # print('block', binascii.hexlify(byte_block))
-        while i < len(byte_block):
-            packet_length = int(byte_block[i])
-            packet = byte_block[i:i+packet_length+1]
+        new_byte_block = self.leftovers + byte_block
+        self.leftovers = bytes()
+        while i < len(new_byte_block):
+            packet_length = int(new_byte_block[i])
+            packet = new_byte_block[i:i+packet_length+1]
             if self.check_packet(packet):
                 result_packets.append(packet)
                 i += packet_length + 1
+            elif i + packet_length + 1 >= len(byte_block):
+                self.leftovers = packet
+                break
             else:
                 i += 1
-        # print('readouts', [binascii.hexlify(packet) for packet in result_packets])
         return result_packets
 
 
