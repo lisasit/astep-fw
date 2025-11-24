@@ -101,16 +101,31 @@ class BoardDriver:
         """Writes the I/O Control register to enable both Timestamp and Sample clock outputs"""
         await self.setSampleClock(enable=True, flush=flush)
         await self.setTimestampClock(enable=True, flush=flush)
+<<<<<<< HEAD
 
     async def setExternalClock(self,enable:bool,waitForClockChange:bool = True ):
+=======
+        
+    async def setExternalClock(self,enable:bool,ext_clock_is_differential:bool=True, waitForClockChange:bool = True ):
+>>>>>>> origin/dev_richard
         """If enable is True, allow the external clock to be used. If the FW switches to external clock ,a reset happends, this method will warn the user"""
 
         # First Read current state
         # If external clock requested and already selected, emit a warning
         #
         currentClockCtrl1 = await self.rfg.read_clock_ctrl()
+<<<<<<< HEAD
         currentClockIsExternal = (currentClockCtrl1>>2) & 0x1 == 1
 
+=======
+        if ext_clock_is_differential is True:
+            currentClockCtrl1 |= 0x2 
+        else:
+            currentClockCtrl1 &= ~(0x2)
+            
+        currentClockIsExternal = (currentClockCtrl1>>2) & 0x1 == 1 
+        
+>>>>>>> origin/dev_richard
         if enable is True and not currentClockIsExternal:
             logger.warning("Enabling external clock - do this before any configuration, the FW will reset upon clock switching - make sure the external clock is running")
 
