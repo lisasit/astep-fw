@@ -304,6 +304,7 @@ class ASTEP(Satellite):
 
     async def setup_clocks(self):
         self.log.info(f"Setting up clocks, use_tlu = {self.use_tlu}, fpga_ts size = {self.get_fpga_ts_size_bits()} bits")
+        await self.boardDriver.setExternalClock(enable=self.use_tlu)
         tc = await self.boardDriver.rfg.read_layers_fpga_timestamp_ctrl()
         self.log.info(f'Timestamp config before configuring the timestamp: {tc}')
         await self.boardDriver.enableSensorClocks(flush=True)
@@ -558,8 +559,16 @@ class ASTEP(Satellite):
             return "Injections stopped"
         return "Nothing is done, AstroPix is unstoppable"
 
+    async def print_stats(self):
+        for i in range(self.nlayers):
+            idle = await self.boardDriver.getLayerStatIDLECounter(i)
+            frames = await self.boardDriver.getLayerStatFRAMECounter(i)
+            errors = await self.boardDriver.getLayerWrongLength(i)
+            self.log.debug(f"Layer {i} stats: {idle} idle bytes, {frames} frames, {errors} errors")
+
     @async_run
     async def do_run(self, payload: any) -> str:
+        ireadout = 0
         while not self._state_thread_evt.is_set():
             if not self.autoread:
                 for layer in range(self.nlayers):
@@ -568,7 +577,7 @@ class ASTEP(Satellite):
                     )
             buffer_size = await self.boardDriver.readoutGetBufferSize()
             self.log.debug(f"buffer size = {buffer_size}")
-            if buffer_size > 8000:
+            if buffer_size > 17000:
                 self.log.error(
                     f"Buffer size too big ({buffer_size}), probably something went wrong with the readout"
                 )
@@ -582,6 +591,9 @@ class ASTEP(Satellite):
             if buffer_size > 0:  # if there is data contained in the readout stream
                 self.bitfile.write(buffer_size.to_bytes(2, byteorder="little"))
                 self.bitfile.write(readout)
+                if ireadout % 100 == 0:
+                    await self.print_stats()
+                ireadout += 1
         return "Finished data acquisition"
 
     def create_files_for_run(self):
