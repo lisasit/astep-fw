@@ -7,6 +7,7 @@ import os
 import toml
 import yaml
 import numpy as np
+import h5py
 
 class HalfHit:
     def __init__(self):
@@ -23,7 +24,6 @@ class HalfHit:
         self.chip_id = None
         self.payload = None
         self.readout_id = None
-        self.tot_us = None
         self.fpga_ts = None
 
     def get_tot_us(self):
@@ -119,6 +119,14 @@ class Decoder:
         self.leftovers = bytes()
 
     def write_hits_to_file(self, filename):
+        if '.root' in filename:
+            self.write_hits_to_root_file(filename)
+        elif '.h5' in filename:
+            self.write_hits_to_hdf5_file(filename)
+        else:
+            print(f'ERROR! Unknown file extension in {filename}, only .root and .h5 are currently recognized')
+
+    def write_hits_to_root_file(self, filename):
         if self.verbose:
             print(f'Writing data to  {filename}:')
             print(f'{len(self.hits)} hits')
@@ -154,6 +162,20 @@ class Decoder:
                         config[key_for_dict] = yaml.safe_load(stream)
                 root_file['chip_config'] = prepare_dict_for_root(config)
 
+    def write_hits_to_hdf5_file(self, filename):
+        HIT_TYPE = np.dtype([
+            ('column', 'i4'),
+            ('row', 'i4'),
+            ('raw', 'i4'),
+            ('charge', 'd'),
+            ('timestamp', 'd'),
+            ('trigger_number', 'u4')
+        ])
+        data_hits = np.array(
+            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts, 0) for hit in self.hits], dtype=HIT_TYPE
+        )
+        with h5py.File(filename, 'w') as hdf5_file:
+            dset = hdf5_file.create_dataset("Hits", data=data_hits)
 
     def decode(self):
         readout_id = 0

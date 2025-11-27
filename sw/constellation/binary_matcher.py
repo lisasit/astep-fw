@@ -10,6 +10,7 @@ class Hit:
         self.chip_id = None
         self.tot_us = None
         self.fpga_ts = None
+        self.tot = None
 
     def get_dict(self):
         return self.__dict__
@@ -68,5 +69,6 @@ class Matcher:
                 hit.payload = row_halfhit.payload
                 hit.chip_id = row_halfhit.chip_id
                 hit.tot_us = (row_halfhit.get_tot_us() + col_halfhit.get_tot_us())/2
+                hit.tot = row_halfhit.tot_total
                 hit.fpga_ts = (row_halfhit.fpga_ts + col_halfhit.fpga_ts)//2
                 self.hits.append(hit)
