@@ -8,6 +8,7 @@ import toml
 import yaml
 import numpy as np
 import h5py
+from histogram_filler import HistogramFiller
 
 class HalfHit:
     def __init__(self):
@@ -126,7 +127,7 @@ class Decoder:
         else:
             print(f'ERROR! Unknown file extension in {filename}, only .root and .h5 are currently recognized')
 
-    def write_hits_to_root_file(self, filename):
+    def write_hits_to_root_file(self, filename, make_histograms=True):
         if self.verbose:
             print(f'Writing data to  {filename}:')
             print(f'{len(self.hits)} hits')
@@ -135,6 +136,13 @@ class Decoder:
             col_hh = [hh for hh in self.halfhits if hh.isCol]
             print(f'ratio of column to row halfhits = {len(col_hh)/(len(self.halfhits) - len(col_hh)) if len(self.halfhits) != len(col_hh) else np.inf} ({len(col_hh)} col halfhits and {len(self.halfhits) - len(col_hh)} row halfhits)')
             print(f'Derived FPGA timestamp length {int(np.median(self.fpga_ts_lengths)) if len(self.fpga_ts_lengths) != 0 else None} bytes')
+
+        if make_histograms:
+            print('Filling histograms...')
+            histogram_filler = HistogramFiller()
+            histogram_filler.fill_histograms(self.hits)
+            print('... done!')
+
         with uproot.recreate(filename) as root_file:
             result_dict = {}
             for attr in Hit().get_dict().keys():
@@ -161,6 +169,10 @@ class Decoder:
                         key_for_dict = '_'.join(filename.split('/')[-1].replace('.yml', '').split('_')[:-1])
                         config[key_for_dict] = yaml.safe_load(stream)
                 root_file['chip_config'] = prepare_dict_for_root(config)
+
+            if make_histograms:
+                for attr in histogram_filler.get_dict():
+                    root_file[f'histograms/{attr}'] = getattr(histogram_filler, attr)
 
     def write_hits_to_hdf5_file(self, filename):
         HIT_TYPE = np.dtype([
