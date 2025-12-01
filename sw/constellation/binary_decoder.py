@@ -134,7 +134,7 @@ class Decoder:
             print(f'ratio of hits to halfhits = {len(self.hits)/len(self.halfhits) if len(self.halfhits) != 0 else np.inf}')
             col_hh = [hh for hh in self.halfhits if hh.isCol]
             print(f'ratio of column to row halfhits = {len(col_hh)/(len(self.halfhits) - len(col_hh)) if len(self.halfhits) != len(col_hh) else np.inf} ({len(col_hh)} col halfhits and {len(self.halfhits) - len(col_hh)} row halfhits)')
-            print(f'Derived FPGA timestamp length {int(np.median(self.fpga_ts_lengths))} bytes')
+            print(f'Derived FPGA timestamp length {int(np.median(self.fpga_ts_lengths)) if len(self.fpga_ts_lengths) != 0 else None} bytes')
         with uproot.recreate(filename) as root_file:
             result_dict = {}
             for attr in Hit().get_dict().keys():
@@ -220,6 +220,8 @@ class Decoder:
 
     def check_packet(self, packet):
         if len(packet) - 1 != int(packet[0]):
+            return False
+        if len(packet) not in [9, 11, 13, 15]:
             return False
         return True
 
