@@ -111,6 +111,7 @@ class Decoder:
 
         self.constellation_config_filename = constellation_config_filename
         self.chip_config_filenames = chip_config_filenames
+        self.read_configs()
         self.header_string = b'\x20'
         self.bytes_per_packet = 5
         self.hits = []
@@ -118,6 +119,22 @@ class Decoder:
         self.legacy = legacy
         self.fpga_ts_lengths = []
         self.leftovers = bytes()
+
+    def read_configs(self):
+        if self.constellation_config_filename is not None:
+            with open(self.constellation_config_filename, 'r') as f:
+                self.constellation_config = toml.load(f)
+        else:
+            self.constellation_config = None
+
+        if self.chip_config_filenames is not None:
+            self.chip_config = {}
+            for filename in self.chip_config_filenames:
+                with open(filename, "r", encoding="utf-8") as stream:
+                    key_for_dict = '_'.join(filename.split('/')[-1].replace('.yml', '').split('_')[:-1])
+                    self.chip_config[key_for_dict] = yaml.safe_load(stream)
+        else:
+            self.chip_config = None
 
     def write_hits_to_file(self, filename):
         if '.root' in filename:
@@ -139,8 +156,8 @@ class Decoder:
 
         if make_histograms:
             print('Filling histograms...')
-            histogram_filler = HistogramFiller()
-            histogram_filler.fill_histograms(self.hits)
+            histogram_filler = HistogramFiller(self)
+            histogram_filler.fill_histograms()
             print('... done!')
 
         with uproot.recreate(filename) as root_file:
@@ -157,22 +174,16 @@ class Decoder:
 
             root_file['halfhits'] = result_dict_hh
 
-            if self.constellation_config_filename is not None:
-                with open(self.constellation_config_filename, 'r') as f:
-                    config = toml.load(f)
-                root_file['constellation_config'] = prepare_dict_for_root(config)
+            if self.constellation_config is not None:
+                root_file['constellation_config'] = prepare_dict_for_root(self.constellation_config)
 
-            if self.chip_config_filenames is not None:
-                config = {}
-                for filename in self.chip_config_filenames:
-                    with open(filename, "r", encoding="utf-8") as stream:
-                        key_for_dict = '_'.join(filename.split('/')[-1].replace('.yml', '').split('_')[:-1])
-                        config[key_for_dict] = yaml.safe_load(stream)
-                root_file['chip_config'] = prepare_dict_for_root(config)
+            if self.chip_config is not None:
+                root_file['chip_config'] = prepare_dict_for_root(self.chip_config)
 
             if make_histograms:
-                for attr in histogram_filler.get_dict():
-                    root_file[f'histograms/{attr}'] = getattr(histogram_filler, attr)
+                hists = histogram_filler.get_histograms()
+                for key in hists:
+                    root_file[f'histograms/{key}'] = hists[key]
 
     def write_hits_to_hdf5_file(self, filename):
         HIT_TYPE = np.dtype([
