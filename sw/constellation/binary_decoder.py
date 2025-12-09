@@ -156,7 +156,7 @@ class Decoder:
 
         if make_histograms:
             print('Filling histograms...')
-            histogram_filler = HistogramFiller(self)
+            histogram_filler = HistogramFiller(self, self.verbose)
             histogram_filler.fill_histograms()
             print('... done!')
 
@@ -195,7 +195,7 @@ class Decoder:
             ('trigger_number', 'u4')
         ])
         data_hits = np.array(
-            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts, 0) for hit in self.hits], dtype=HIT_TYPE
+            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / 40e-3, 0) for hit in self.hits if hit.fpga_ts > 0], dtype=HIT_TYPE
         )
         with h5py.File(filename, 'w') as hdf5_file:
             dset = hdf5_file.create_dataset("Hits", data=data_hits)
@@ -207,11 +207,12 @@ class Decoder:
             block = self.read_block()
             if block is None:
                 break
+            readout_id += 1
             if self.legacy:
                 hit_packets = self.split_packets_legacy(block)
             else:
                 hit_packets = self.split_packets(block)
-            readout_id += 1
+
             halfhits = [self.decode_packet(packet, readout_id) for packet in hit_packets]
             halfhits = [halfhit for halfhit in halfhits if halfhit is not None]
             matcher = Matcher(halfhits)
@@ -294,7 +295,7 @@ class Decoder:
             # byte 6 is ToT LSB
             halfhit.tot_lsb = int(hit_packet[6])
             # bytes 7-end are the FPGA timestamp
-            halfhit.fpga_ts = np.uint64(int.from_bytes(hit_packet[7:], 'little'))
+            halfhit.fpga_ts = np.uint64(int.from_bytes(hit_packet[7:], 'big'))
 
             # constructing ToT total
             halfhit.tot_total = (halfhit.tot_msb << 8) + halfhit.tot_lsb

@@ -70,5 +70,5 @@ class Matcher:
                 hit.chip_id = row_halfhit.chip_id
                 hit.tot_us = (row_halfhit.get_tot_us() + col_halfhit.get_tot_us())/2
                 hit.tot = row_halfhit.tot_total
-                hit.fpga_ts = (row_halfhit.fpga_ts + col_halfhit.fpga_ts)//2
+                hit.fpga_ts = row_halfhit.fpga_ts
                 self.hits.append(hit)

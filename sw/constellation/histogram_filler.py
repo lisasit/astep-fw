@@ -4,27 +4,30 @@ from hist import Hist
 import json
 
 class HistogramFiller:
-    def __init__(self, decoder):
+    def __init__(self, decoder, verbose=False):
         self.decoder = decoder
         self.derive_chip_configuration()
         self.hitmaps = [[Hist(
             hist.axis.Regular(35, 0, 35, name="col"),
             hist.axis.Regular(35, 0, 35, name="row")
             ) for i in range(self.nchips_per_layer)] for j in range(self.nlayers)]
+        self.verbose = verbose
 
     def fill_histograms(self):
         self.fill_hitmap_histogram()
 
     def derive_chip_configuration(self):
         if self.decoder.chip_config is None:
-            print('No chip config, so assuming the default configuration with 1 chip')
+            if self.verbose:
+                print('No chip config, so assuming the default configuration with 1 chip')
             self.nlayers = 1
             self.nchips_per_layer = 1
         else:
             self.nlayers = len(self.decoder.chip_config)
             first_config = self.decoder.chip_config[list(self.decoder.chip_config.keys())[0]]['astropix3'] # TODO change for other versions???
             self.nchips_per_layer = len([key for key in first_config if 'config' in key])
-            print(f'Derived configuration from the config file(s): {self.nlayers} layers, each with {self.nchips_per_layer} chips')
+            if self.verbose:
+                print(f'Derived configuration from the config file(s): {self.nlayers} layers, each with {self.nchips_per_layer} chips')
 
     def get_masks(self):
         self.masks = [[np.full((35, 35), 0) for i in range(self.nchips_per_layer)] for j in range(self.nlayers)]
