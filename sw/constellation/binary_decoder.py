@@ -137,9 +137,12 @@ class Decoder:
         with uproot.recreate(filename) as root_file:
             result_dict = {}
             if len(self.hits) != 0:
+                for hit in self.hits:
+                    hit.get_dict()
                 for attr in self.hits[0].get_dict().keys():
                     result_dict[attr] = [getattr(hit, attr) for hit in self.hits]
             root_file['hits'] = result_dict
+
 
             if self.chip_version == 3:
                 result_dict_hh = {}
@@ -297,34 +300,34 @@ class Decoder:
             return
         self.fpga_ts_lengths.append(len(hit_packet) - 10)
         try:
-            rawhit = Hit_v4()
+            hit = Hit_v4(use_negedge_ts=True)
             # byte 0 = length of the packet
-            rawhit.packet_length = int(hit_packet[0])
+            hit.packet_length = int(hit_packet[0])
             # byte 1 = layer
-            rawhit.layer = int(hit_packet[1])
+            hit.layer = int(hit_packet[1])
             # byte 2 is a header. 3 bit payload, 5 bit chip id
             byte = int(hit_packet[2])
-            rawhit.chip_id = byte >> 3
-            rawhit.payload = byte & 0b00000111
+            hit.chip_id = byte >> 3
+            hit.payload = byte & 0b00000111
             # byte 3 and part of byte 4 is hit location
             byte3 = int(hit_packet[3])
             byte4 = int(hit_packet[4])
-            rawhit.row = byte3 >> 3
-            rawhit.col = ((byte3 & 0b111) << 2) + (byte4 >> 6)
+            hit.row = byte3 >> 3
+            hit.col = ((byte3 & 0b111) << 2) + (byte4 >> 6)
             #
-            rawhit.tsneg1      = (int(hit_packet[4]) >> 5) & 0b1
-            rawhit.ts1         = ((int(hit_packet[4]) & 0b11111) << 9) + (int(hit_packet[5]) << 1) + (int(hit_packet[6]) >> 7)
-            rawhit.tsfine1     = (int(hit_packet[6]) >> 4) & 0b111
-            rawhit.tstdc1      = ((int(hit_packet[6]) & 0b1111) << 1) + (int(hit_packet[7]) >> 7)
+            hit.ts1_neg      = (int(hit_packet[4]) >> 5) & 0b1
+            hit.ts1         = ((int(hit_packet[4]) & 0b11111) << 9) + (int(hit_packet[5]) << 1) + (int(hit_packet[6]) >> 7)
+            hit.ts1_fine     = (int(hit_packet[6]) >> 4) & 0b111
+            hit.ts1_tdc      = ((int(hit_packet[6]) & 0b1111) << 1) + (int(hit_packet[7]) >> 7)
             #
-            rawhit.tsneg2      = (int(hit_packet[7]) >> 6) & 0b1
-            rawhit.ts2         = ((int(hit_packet[7]) & 0b111111) << 8) + int(hit_packet[8])
-            rawhit.tsfine2     = (int(hit_packet[9]) >> 5) & 0b111
-            rawhit.tstdc2      = int(hit_packet[9]) & 0b11111
+            hit.ts2_neg      = (int(hit_packet[7]) >> 6) & 0b1
+            hit.ts2         = ((int(hit_packet[7]) & 0b111111) << 8) + int(hit_packet[8])
+            hit.ts2_fine     = (int(hit_packet[9]) >> 5) & 0b111
+            hit.ts2_tdc      = int(hit_packet[9]) & 0b11111
 
-            rawhit.fpga_ts = np.uint64(int.from_bytes(hit_packet[10:], 'big'))
+            hit.fpga_ts = np.uint64(int.from_bytes(hit_packet[10:], 'big'))
 
-            rawhit.readout_id = readout_id
+            hit.readout_id = readout_id
 
             return hit
         except IndexError:
