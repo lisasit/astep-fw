@@ -170,8 +170,9 @@ class Decoder:
             ('timestamp', 'd'),
             ('trigger_number', 'u4')
         ])
+        print(f'{len([1 for hit in self.hits if hit.fpga_ts < 0.01])} hits with fpga_ts == 0')
         data_hits = np.array(
-            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits if hit.fpga_ts > 0], dtype=HIT_TYPE
+            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits], dtype=HIT_TYPE
         ) # fpga_ts in ns
         with h5py.File(filename, 'w') as hdf5_file:
             dset = hdf5_file.create_dataset("Hits", data=data_hits)
