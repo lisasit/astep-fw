@@ -37,7 +37,7 @@ def prepare_dict_for_root(dict_to_prepare):
 
 class Decoder:
     #I did not add the code for split hits at the endges of the readout blocks. Will add in the future if necessary
-    def __init__(self, bin_filename, chip_version, fpga_ts_clock_freq=100e6, constellation_config_filename=None, chip_config_filenames=None, legacy=False, verbose=True, max_nreadouts=None):
+    def __init__(self, bin_filename, chip_version, fpga_ts_clock_freq=100e6, constellation_config_filename=None, chip_config_filenames=None, verbose=True, max_nreadouts=None):
         """
         constellation_config_filename and chip_config_filenames can be added to provide metadata about the run that will be saved to the root file. If they are not provided, Decoder will try to look for a .toml (for the constellation config) and all .yml (for the chip configs) files with the same timestamp in the same directory as the binary file. If they are not found, the metadata is not written
         """
@@ -88,11 +88,8 @@ class Decoder:
         self.constellation_config_filename = constellation_config_filename
         self.chip_config_filenames = chip_config_filenames
         self.read_configs()
-        self.header_string = b'\x20'
-        self.bytes_per_packet = 5
         self.hits = []
         self.halfhits = []
-        self.legacy = legacy
         self.fpga_ts_lengths = []
         self.leftovers = bytes()
 
@@ -116,7 +113,7 @@ class Decoder:
         if self.verbose:
             print(f'Writing data to  {filename}:')
             print(f'{len(self.hits)} hits')
-            if self.version == 3:
+            if self.chip_version == 3:
                 print(f'{len(self.halfhits)} halfhtis')
                 print(f'ratio of hits to halfhits = {len(self.hits)/len(self.halfhits) if len(self.halfhits) != 0 else np.inf}')
                 col_hh = [hh for hh in self.halfhits if hh.isCol]
@@ -144,7 +141,7 @@ class Decoder:
                     result_dict[attr] = [getattr(hit, attr) for hit in self.hits]
             root_file['hits'] = result_dict
 
-            if self.version == 3:
+            if self.chip_version == 3:
                 result_dict_hh = {}
                 for attr in HalfHit_v3().get_dict().keys():
                     if attr == 'tot_us':
@@ -187,20 +184,17 @@ class Decoder:
             if block is None:
                 break
             readout_id += 1
-            if self.legacy:
-                hit_packets = self.split_packets_legacy(block)
-            else:
-                hit_packets = self.split_packets(block)
+            hit_packets = self.split_packets(block)
 
             decoded_packets = [self.decode_packet(packet, readout_id) for packet in hit_packets]
             decoded_packets = [decoded_packet for decoded_packet in decoded_packets if decoded_packet is not None]
-            self.decoded_packets += decoded_packets
-            if self.version == 3:
+            if self.chip_version == 3:
+                self.halfhits += decoded_packets
                 matcher = Matcher(decoded_packets)
                 matcher.match()
                 self.hits += matcher.hits
-            elif self.version == 4:
-                self.hits += [decoded_packet.make_hit() for decoded_packet in decoded_packets]
+            elif self.chip_version == 4:
+                self.hits += decoded_packets
 
             if self.verbose:
                 block_lengths.append(len(block))
