@@ -2,7 +2,7 @@ from constellation.binary_decoder import Decoder
 import argparse
 import os
 
-def decode(filename, force, max_nreadouts, file_extensions):
+def decode(filename, force, max_nreadouts, file_extensions, chip_version):
     os.makedirs('/'.join(filename.split('/')[:-1]), exist_ok=True)
 
     name_output = filename.replace('raw_data', 'decoded')
@@ -16,10 +16,10 @@ def decode(filename, force, max_nreadouts, file_extensions):
             print(f'File decoded with all ({file_extensions}) extensions, skipping')
             return
 
-    d = Decoder(filename, max_nreadouts=max_nreadouts)
-    d.decode()
-    for file_extension in file_extensions:
-        d.write_hits_to_file(name_output.replace('.bin', file_extension))
+    d = Decoder(filename, chip_version=chip_version, max_nreadouts=max_nreadouts)
+#    d.decode()
+#    for file_extension in file_extensions:
+#        d.write_hits_to_file(name_output.replace('.bin', file_extension))
 
 def main(args):
     if args.max_nreadouts is not None:
@@ -49,7 +49,7 @@ def main(args):
             file_extensions.append('.h5')
         if args.root:
             file_extensions.append('.root')
-        decode(filename, args.force, args.max_nreadouts, file_extensions)
+        decode(filename, args.force, args.max_nreadouts, file_extensions, args.version)
 
 
 if __name__ == "__main__":
@@ -62,6 +62,7 @@ if __name__ == "__main__":
     parser.add_argument('-m', '--max-nreadouts', required=False, default=None, help='Maximum number of readout blocks per file to decode')
     parser.add_argument('-h5', '--h5', required=False, default=False, action="store_true", help='Write the decoded output into an h5 file')
     parser.add_argument('-root', '--root', required=False, default=False, action="store_true", help='Write the decoded output into a root file')
+    parser.add_argument('-v', '--version', required=True, help='Chip version', type=int)
 
     args = parser.parse_args()
     main(args)

@@ -1,19 +1,6 @@
 
 
-class Hit:
-    def __init__(self):
-        self.row = None
-        self.col = None
-        self.timestamp = None
-        self.readout_id = None
-        self.payload = None
-        self.chip_id = None
-        self.tot_us = None
-        self.fpga_ts = None
-        self.tot = None
-
-    def get_dict(self):
-        return self.__dict__
+from hit_classes import Hit_v3
 
 class Matcher:
     def __init__(self, halfhits, timestamp_tolerance=1, tot_us_tolerance=0.5):
@@ -61,7 +48,7 @@ class Matcher:
         for row_halfhit in self.row_halfhits:
             col_halfhit = self.find_match(row_halfhit)
             if col_halfhit is not None:
-                hit = Hit()
+                hit = Hit_v3()
                 hit.row = row_halfhit.location
                 hit.col = col_halfhit.location
                 hit.timestamp = (row_halfhit.timestamp + col_halfhit.timestamp)//2

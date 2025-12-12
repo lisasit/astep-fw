@@ -6,12 +6,12 @@ import json
 class HistogramFiller:
     def __init__(self, decoder, verbose=False):
         self.decoder = decoder
+        self.verbose = verbose
         self.derive_chip_configuration()
         self.hitmaps = [[Hist(
             hist.axis.Regular(35, 0, 35, name="col"),
             hist.axis.Regular(35, 0, 35, name="row")
             ) for i in range(self.nchips_per_layer)] for j in range(self.nlayers)]
-        self.verbose = verbose
 
     def fill_histograms(self):
         self.fill_hitmap_histogram()

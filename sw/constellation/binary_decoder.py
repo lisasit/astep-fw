@@ -1,7 +1,7 @@
 # import sys
 # sys.path.append('../astropix-analysis')
 import binascii
-from binary_matcher import Matcher, Hit
+from binary_matcher import Matcher
 import uproot
 import os
 import toml
@@ -9,33 +9,7 @@ import yaml
 import numpy as np
 import h5py
 from histogram_filler import HistogramFiller
-
-class HalfHit:
-    def __init__(self):
-        self.sample_clock_period_ns = 5 #ns
-        self.packet_length = None
-        self.layer = None
-        self.isCol = None
-        self.location = None
-        self.timestamp = None
-        self.tot_lsb = None
-        self.tot_msb = None
-        self.tot_total = None
-        self.tot_us = None
-        self.chip_id = None
-        self.payload = None
-        self.readout_id = None
-        self.fpga_ts = None
-
-    def get_tot_us(self):
-        if self.tot_us is None:
-            self.tot_us = self.tot_total * self.sample_clock_period_ns / 1000.0
-        return self.tot_us
-
-    def get_dict(self):
-        if self.tot_total is not None:
-            self.get_tot_us()
-        return self.__dict__
+from hit_classes import HalfHit_v3, Hit_v4
 
 def flatten(to_flatten):
     result_dict = {}
@@ -63,7 +37,7 @@ def prepare_dict_for_root(dict_to_prepare):
 
 class Decoder:
     #I did not add the code for split hits at the endges of the readout blocks. Will add in the future if necessary
-    def __init__(self, bin_filename, constellation_config_filename=None, chip_config_filenames=None, legacy=False, verbose=True, max_nreadouts=None):
+    def __init__(self, bin_filename, chip_version, fpga_ts_clock_freq=100e6, constellation_config_filename=None, chip_config_filenames=None, legacy=False, verbose=True, max_nreadouts=None):
         """
         constellation_config_filename and chip_config_filenames can be added to provide metadata about the run that will be saved to the root file. If they are not provided, Decoder will try to look for a .toml (for the constellation config) and all .yml (for the chip configs) files with the same timestamp in the same directory as the binary file. If they are not found, the metadata is not written
         """
@@ -71,6 +45,8 @@ class Decoder:
         self.bin_file = open(bin_filename, 'rb')
         self.max_nreadouts = max_nreadouts
         self.verbose = verbose
+        self.chip_version = chip_version
+        self.fpga_ts_clock_freq = fpga_ts_clock_freq
         if self.verbose:
             print(f'Decoding {bin_filename}')
 
@@ -81,12 +57,12 @@ class Decoder:
             print(f'Using provided chip config files: {chip_config_filenames}')
 
         if constellation_config_filename is None or chip_config_filenames is None:
-            timestamp = bin_filename.split('/')[-1].split('_')[-1].replace('.bin', '')
+            run_id = bin_filename.split('/')[-1].replace('.bin', '')
             bin_directory = '/'.join(bin_filename.split('/')[:-1])
-            same_timestamp_files = [filename for filename in os.listdir(bin_directory) if timestamp in filename]
+            same_id_files = [filename for filename in os.listdir(bin_directory) if len(filename.split('.')) > 1 and filename.split('.')[-2].endswith(run_id)]
 
             def find_fitting_file(file_extension):
-                fitting_filenames = [filename for filename in same_timestamp_files if filename.endswith(file_extension)]
+                fitting_filenames = [filename for filename in same_id_files if filename.endswith(file_extension)]
                 if len(fitting_filenames) != 0:
                     if self.verbose:
                         print(f'Found {file_extension} config(s): {fitting_filenames}')
@@ -137,6 +113,16 @@ class Decoder:
             self.chip_config = None
 
     def write_hits_to_file(self, filename):
+        if self.verbose:
+            print(f'Writing data to  {filename}:')
+            print(f'{len(self.hits)} hits')
+            if self.version == 3:
+                print(f'{len(self.halfhits)} halfhtis')
+                print(f'ratio of hits to halfhits = {len(self.hits)/len(self.halfhits) if len(self.halfhits) != 0 else np.inf}')
+                col_hh = [hh for hh in self.halfhits if hh.isCol]
+                print(f'ratio of column to row halfhits = {len(col_hh)/(len(self.halfhits) - len(col_hh)) if len(self.halfhits) != len(col_hh) else np.inf} ({len(col_hh)} col halfhits and {len(self.halfhits) - len(col_hh)} row halfhits)')
+            print(f'Derived FPGA timestamp length {int(np.median(self.fpga_ts_lengths)) if len(self.fpga_ts_lengths) != 0 else None} bytes')
+
         if '.root' in filename:
             self.write_hits_to_root_file(filename)
         elif '.h5' in filename:
@@ -145,15 +131,6 @@ class Decoder:
             print(f'ERROR! Unknown file extension in {filename}, only .root and .h5 are currently recognized')
 
     def write_hits_to_root_file(self, filename, make_histograms=True):
-        if self.verbose:
-            print(f'Writing data to  {filename}:')
-            print(f'{len(self.hits)} hits')
-            print(f'{len(self.halfhits)} halfhtis')
-            print(f'ratio of hits to halfhits = {len(self.hits)/len(self.halfhits) if len(self.halfhits) != 0 else np.inf}')
-            col_hh = [hh for hh in self.halfhits if hh.isCol]
-            print(f'ratio of column to row halfhits = {len(col_hh)/(len(self.halfhits) - len(col_hh)) if len(self.halfhits) != len(col_hh) else np.inf} ({len(col_hh)} col halfhits and {len(self.halfhits) - len(col_hh)} row halfhits)')
-            print(f'Derived FPGA timestamp length {int(np.median(self.fpga_ts_lengths)) if len(self.fpga_ts_lengths) != 0 else None} bytes')
-
         if make_histograms:
             print('Filling histograms...')
             histogram_filler = HistogramFiller(self, self.verbose)
@@ -162,17 +139,19 @@ class Decoder:
 
         with uproot.recreate(filename) as root_file:
             result_dict = {}
-            for attr in Hit().get_dict().keys():
-                result_dict[attr] = [getattr(hit, attr) for hit in self.hits]
+            if len(self.hits) != 0:
+                for attr in self.hits[0].get_dict().keys():
+                    result_dict[attr] = [getattr(hit, attr) for hit in self.hits]
             root_file['hits'] = result_dict
 
-            result_dict_hh = {}
-            for attr in HalfHit().get_dict().keys():
-                if attr == 'tot_us':
-                    continue
-                result_dict_hh[attr] = [getattr(halfhit, attr) for halfhit in self.halfhits]
+            if self.version == 3:
+                result_dict_hh = {}
+                for attr in HalfHit_v3().get_dict().keys():
+                    if attr == 'tot_us':
+                        continue
+                    result_dict_hh[attr] = [getattr(halfhit, attr) for halfhit in self.halfhits]
 
-            root_file['halfhits'] = result_dict_hh
+                root_file['halfhits'] = result_dict_hh
 
             if self.constellation_config is not None:
                 root_file['constellation_config'] = prepare_dict_for_root(self.constellation_config)
@@ -195,8 +174,8 @@ class Decoder:
             ('trigger_number', 'u4')
         ])
         data_hits = np.array(
-            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / 40e-3, 0) for hit in self.hits if hit.fpga_ts > 0], dtype=HIT_TYPE
-        )
+            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits if hit.fpga_ts > 0], dtype=HIT_TYPE
+        ) # fpga_ts in ns
         with h5py.File(filename, 'w') as hdf5_file:
             dset = hdf5_file.create_dataset("Hits", data=data_hits)
 
@@ -213,12 +192,16 @@ class Decoder:
             else:
                 hit_packets = self.split_packets(block)
 
-            halfhits = [self.decode_packet(packet, readout_id) for packet in hit_packets]
-            halfhits = [halfhit for halfhit in halfhits if halfhit is not None]
-            matcher = Matcher(halfhits)
-            matcher.match()
-            self.halfhits += halfhits
-            self.hits += matcher.hits
+            decoded_packets = [self.decode_packet(packet, readout_id) for packet in hit_packets]
+            decoded_packets = [decoded_packet for decoded_packet in decoded_packets if decoded_packet is not None]
+            self.decoded_packets += decoded_packets
+            if self.version == 3:
+                matcher = Matcher(decoded_packets)
+                matcher.match()
+                self.hits += matcher.hits
+            elif self.version == 4:
+                self.hits += [decoded_packet.make_hit() for decoded_packet in decoded_packets]
+
             if self.verbose:
                 block_lengths.append(len(block))
                 if readout_id % 100 == 0:
@@ -245,7 +228,9 @@ class Decoder:
     def check_packet(self, packet):
         if len(packet) - 1 != int(packet[0]):
             return False
-        if len(packet) not in [9, 11, 13, 15]:
+        if self.chip_version == 3 and len(packet) not in [9, 11, 13, 15]:
+            return False
+        if self.chip_version == 4 and len(packet) not in [12, 14, 16, 18]:
             return False
         return True
 
@@ -268,14 +253,19 @@ class Decoder:
                 i += 1
         return result_packets
 
-
     def decode_packet(self, hit_packet, readout_id):
+        if self.chip_version == 3:
+            return self.decode_packet_v3(hit_packet, readout_id)
+        if self.chip_version == 4:
+            return self.decode_packet_v4(hit_packet, readout_id)
+
+    def decode_packet_v3(self, hit_packet, readout_id):
         if len(hit_packet) > 15:
             print(f'ERROR, hit packet too long ({len(hit_packet)}), probably something went wrong with splitting packets')
             return
         self.fpga_ts_lengths.append(len(hit_packet) - 7)
         try:
-            halfhit = HalfHit()
+            halfhit = HalfHit_v3()
             # byte 0 = length of the packet
             halfhit.packet_length = int(hit_packet[0])
             # byte 1 = layer
@@ -303,5 +293,44 @@ class Decoder:
             halfhit.readout_id = readout_id
 
             return halfhit
+        except IndexError:
+            return None
+
+    def decode_packet_v4(self, hit_packet, readout_id):
+        if len(hit_packet) > 18:
+            print(f'ERROR, hit packet too long ({len(hit_packet)}), probably something went wrong with splitting packets')
+            return
+        self.fpga_ts_lengths.append(len(hit_packet) - 10)
+        try:
+            rawhit = Hit_v4()
+            # byte 0 = length of the packet
+            rawhit.packet_length = int(hit_packet[0])
+            # byte 1 = layer
+            rawhit.layer = int(hit_packet[1])
+            # byte 2 is a header. 3 bit payload, 5 bit chip id
+            byte = int(hit_packet[2])
+            rawhit.chip_id = byte >> 3
+            rawhit.payload = byte & 0b00000111
+            # byte 3 and part of byte 4 is hit location
+            byte3 = int(hit_packet[3])
+            byte4 = int(hit_packet[4])
+            rawhit.row = byte3 >> 3
+            rawhit.col = ((byte3 & 0b111) << 2) + (byte4 >> 6)
+            #
+            rawhit.tsneg1      = (int(hit_packet[4]) >> 5) & 0b1
+            rawhit.ts1         = ((int(hit_packet[4]) & 0b11111) << 9) + (int(hit_packet[5]) << 1) + (int(hit_packet[6]) >> 7)
+            rawhit.tsfine1     = (int(hit_packet[6]) >> 4) & 0b111
+            rawhit.tstdc1      = ((int(hit_packet[6]) & 0b1111) << 1) + (int(hit_packet[7]) >> 7)
+            #
+            rawhit.tsneg2      = (int(hit_packet[7]) >> 6) & 0b1
+            rawhit.ts2         = ((int(hit_packet[7]) & 0b111111) << 8) + int(hit_packet[8])
+            rawhit.tsfine2     = (int(hit_packet[9]) >> 5) & 0b111
+            rawhit.tstdc2      = int(hit_packet[9]) & 0b11111
+
+            rawhit.fpga_ts = np.uint64(int.from_bytes(hit_packet[10:], 'big'))
+
+            rawhit.readout_id = readout_id
+
+            return hit
         except IndexError:
             return None
