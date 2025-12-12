@@ -17,9 +17,9 @@ def decode(filename, force, max_nreadouts, file_extensions, chip_version):
             return
 
     d = Decoder(filename, chip_version=chip_version, max_nreadouts=max_nreadouts)
-#    d.decode()
-#    for file_extension in file_extensions:
-#        d.write_hits_to_file(name_output.replace('.bin', file_extension))
+    d.decode()
+    for file_extension in file_extensions:
+        d.write_hits_to_file(name_output.replace('.bin', file_extension))
 
 def main(args):
     if args.max_nreadouts is not None:
