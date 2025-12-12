@@ -177,8 +177,10 @@ class ASTEP(Satellite):
         # Reassert hold to be safe
         await self.boardDriver.holdLayers(hold=True, flush=True)
         # Now all interrupts are high, empty FPGA buffer
-        self.log.info("Flush FPGA buffer before data collection")
-        await self.boardDriver.readoutReadBytes(4098)
+
+        buff = await self.boardDriver.readoutGetBufferSize()
+        self.log.info(f"Flush FPGA buffer before data collection: reading {buff} bytes from the buffer")
+        await self.boardDriver.readoutReadBytes(buff)
         await self.boardDriver.resetLayerStatCounters(layer)
 
     async def setup_injection(self):
@@ -222,12 +224,12 @@ class ASTEP(Satellite):
     async def setup_voltages(self):
         if self.setup_type == "gecco":
             voltage_board = self.boardDriver.geccoGetVoltageBoard()
-            self.log.debug(f"dacvalues = {voltage_board.dacvalues}")
+            self.log.debug(f"dacvalues before setting them = {voltage_board.dacvalues}")
             voltage_board.dacvalues = (
                 8,
                 [self.threshold_pmos / 1000, 0, 1.1, 1, 0, 0, 1, self.threshold / 1000],
             )
-            self.log.debug(f"dacvalues = {voltage_board.dacvalues}")
+            self.log.debug(f"dacvalues after setting them = {voltage_board.dacvalues}")
             voltage_board.vcal = 0.989
             voltage_board.vsupply = 2.7
             await voltage_board.update()
