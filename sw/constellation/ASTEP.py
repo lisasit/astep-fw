@@ -79,8 +79,10 @@ class ASTEP(Satellite):
         self.threshold = config.setdefault("threshold", 1000)
         self.injection_onchip = config.setdefault("injection_onchip", True)
         self.threshold_pmos = config.setdefault("threshold_pmos", 1100)
+        self.vminuspix = config.setdefault("vminuspix", 1000)
 
         self.spi_clkdiv = config.setdefault("spi_clkdiv", 20)
+        self.spi_freq = config.setdefault("spi_freq", 1e6)
 
         self.nbytes_to_read_out = config.setdefault("nbytes_to_read_out", None)
         self.use_tlu = config.setdefault("use_tlu", False)
@@ -227,9 +229,9 @@ class ASTEP(Satellite):
             self.log.debug(f"dacvalues before setting them = {voltage_board.dacvalues}")
             voltage_board.dacvalues = (
                 8,
-                [self.threshold_pmos / 1000, 0, 1.1, 1, 0, 0, 1, self.threshold / 1000],
+                [self.threshold_pmos / 1000, 0, 1.1, 1, 0, 0, self.vminuspix / 1000, self.threshold / 1000],
             )
-            self.log.debug(f"dacvalues after setting them = {voltage_board.dacvalues}")
+            self.log.info(f"dacvalues after setting them = {voltage_board.dacvalues}")
             voltage_board.vcal = 0.989
             voltage_board.vsupply = 2.7
             await voltage_board.update()
@@ -333,7 +335,8 @@ class ASTEP(Satellite):
         self.log.info(f'Timestamp config after configuring the timestamp again: {tc}')
         currentTS = await self.boardDriver.rfg.read_layers_fpga_timestamp_counter()
         self.log.info(f'FPGA TS = {currentTS}')
-        await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush=True)
+        #await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush=True)
+        await self.boardDriver.configureLayerSPIFrequency(self.spi_freq, flush=True)
         await self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True)
 
     @async_run
@@ -402,6 +405,10 @@ class ASTEP(Satellite):
         call_setup_clocks = False
         if "spi_clkdiv" in partial_config.get_keys():
             self.spi_clkdiv = partial_config["spi_clkdiv"]
+            call_setup_clocks = True
+
+        if "spi_freq" in partial_config.get_keys():
+            self.spi_freq = partial_config["spi_freq"]
             call_setup_clocks = True
 
         if "use_tlu" in partial_config.get_keys():
@@ -549,9 +556,9 @@ class ASTEP(Satellite):
         if self.inject:
             await self.boardDriver.geccoGetInjectionBoard().start()
             return f"Injections into layer {self.injection_layer}, chip {self.injection_chip}, row {self.injection_row} col {self.injection_col} started"
-        await self.boardDriver.enableLayersReadout(
-            range(self.nlayers), autoread=self.autoread, flush=True
-        )
+        #await self.boardDriver.enableLayersReadout(
+        #    range(self.nlayers), autoread=self.autoread, flush=True
+        #)
         return f"Chip ready for taking data"
 
     @async_run
@@ -593,8 +600,8 @@ class ASTEP(Satellite):
             if buffer_size > 0:  # if there is data contained in the readout stream
                 self.bitfile.write(buffer_size.to_bytes(2, byteorder="little"))
                 self.bitfile.write(readout)
-                if ireadout % 100 == 0:
-                    await self.print_stats()
+                #if ireadout % 100 == 0:
+                #    await self.print_stats()
                 ireadout += 1
         return "Finished data acquisition"
 
