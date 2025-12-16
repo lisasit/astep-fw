@@ -14,7 +14,7 @@ import numpy as np
 import toml
 import yaml
 from constellation.core.configuration import Configuration
-from constellation.core.satellite import Satellite
+from constellation.core.transmitter_satellite import TransmitterSatellite
 
 import drivers.boards
 
@@ -22,7 +22,7 @@ import drivers.boards
 from astep import AstepRun
 
 
-class ASTEP(Satellite):
+class ASTEP(TransmitterSatellite):
     """Satellite for controlling an AstroPix chip"""
 
     def async_run(func):
@@ -598,10 +598,10 @@ class ASTEP(Satellite):
             )
             readout = await self.boardDriver.readoutReadBytes(counts)
             if buffer_size > 0:  # if there is data contained in the readout stream
-                self.bitfile.write(buffer_size.to_bytes(2, byteorder="little"))
-                self.bitfile.write(readout)
-                #if ireadout % 100 == 0:
-                #    await self.print_stats()
+                # Send data
+                data_record = self.new_data_record()
+                data_record.add_block(readout)
+                self.send_data_record(data_record)
                 ireadout += 1
         return "Finished data acquisition"
 
@@ -634,11 +634,3 @@ class ASTEP(Satellite):
                 except yaml.YAMLError as exc:
                     logger.error(exc)
 
-        # Prepare text files/logs
-        fname = "" if not self.outfile_prefix else self.outfile_prefix + "_"
-        bitpath = self.outdir + "/" + fname + self.run_identifier + ".bin"
-        # textfiles are always saved so we open it up
-        if hasattr(self, "bitfile"):
-            self.bitfile.close()
-        self.bitfile = open(bitpath, "wb")
-        self.log.info(f"Bitfile with data: {bitpath}")
