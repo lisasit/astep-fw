@@ -6,7 +6,7 @@ Provides the entry point for the AstroPix satellite
 """
 
 from constellation.core.logging import setup_cli_logging
-from constellation.core.satellite import SatelliteArgumentParser
+from constellation.core.transmitter_satellite import TransmitterSatelliteArgumentParser
 
 from constellation.ASTEP import ASTEP
 
@@ -15,7 +15,7 @@ def main(args=None):
     """Demonstrator satellite serving as prototype for new satellites"""
 
     # Get a dict of the parsed arguments
-    parser = SatelliteArgumentParser(description=main.__doc__)
+    parser = TransmitterSatelliteArgumentParser(description=main.__doc__)
     args = vars(parser.parse_args(args))
 
     # Set up logging
