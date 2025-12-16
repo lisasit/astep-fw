@@ -37,7 +37,7 @@ def prepare_dict_for_root(dict_to_prepare):
 
 class Decoder:
     #I did not add the code for split hits at the endges of the readout blocks. Will add in the future if necessary
-    def __init__(self, bin_filename, chip_version, fpga_ts_clock_freq=100e6, constellation_config_filename=None, chip_config_filenames=None, verbose=True, max_nreadouts=None):
+    def __init__(self, bin_filename, chip_version, fpga_ts_clock_freq=80e6, constellation_config_filename=None, chip_config_filenames=None, verbose=True, max_nreadouts=None):
         """
         constellation_config_filename and chip_config_filenames can be added to provide metadata about the run that will be saved to the root file. If they are not provided, Decoder will try to look for a .toml (for the constellation config) and all .yml (for the chip configs) files with the same timestamp in the same directory as the binary file. If they are not found, the metadata is not written
         """
@@ -175,7 +175,7 @@ class Decoder:
         ])
         print(f'{len([1 for hit in self.hits if hit.fpga_ts < 0.01])} hits with fpga_ts == 0')
         data_hits = np.array(
-            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits], dtype=HIT_TYPE
+            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits if hit.fpga_ts > 0.1], dtype=HIT_TYPE
         ) # fpga_ts in ns
         with h5py.File(filename, 'w') as hdf5_file:
             dset = hdf5_file.create_dataset("Hits", data=data_hits)
