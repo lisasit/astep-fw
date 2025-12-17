@@ -573,12 +573,12 @@ class ASTEP(Satellite):
             return "Injections stopped"
         return "Nothing is done, AstroPix is unstoppable"
 
-    async def print_stats(self):
+    async def print_stats(self, ireadout):
         for i in range(self.nlayers):
             idle = await self.boardDriver.getLayerStatIDLECounter(i)
             frames = await self.boardDriver.getLayerStatFRAMECounter(i)
             errors = await self.boardDriver.getLayerWrongLength(i)
-            self.log.debug(f"Layer {i} stats: {idle} idle bytes, {frames} frames, {errors} errors")
+            self.log.info(f"Layer {i} stats: readout block #{ireadout}, {idle} idle bytes, {frames} frames, {errors} errors")
 
     #@schedule_metric("Byte", MetricsType.LAST_VALUE
 
@@ -607,8 +607,8 @@ class ASTEP(Satellite):
             if buffer_size > 0:  # if there is data contained in the readout stream
                 self.bitfile.write(buffer_size.to_bytes(2, byteorder="little"))
                 self.bitfile.write(readout)
-                #if ireadout % 100 == 0:
-                #    await self.print_stats()
+                if ireadout % 1000 == 0:
+                    await self.print_stats(ireadout)
                 ireadout += 1
         return "Finished data acquisition"
 
