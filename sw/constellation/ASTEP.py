@@ -194,6 +194,7 @@ class ASTEP(Satellite):
                 self.boardDriver.asics[self.injection_layer].enable_inj_row(
                     self.injection_chip, self.injection_row, inplace=False
                 )
+
                 self.boardDriver.asics[self.injection_layer].enable_pixel(
                     chip=self.injection_chip,
                     col=self.injection_col,
@@ -307,6 +308,10 @@ class ASTEP(Satellite):
             )
 
     async def setup_clocks(self):
+        self.log.info("Setting the chip version to v4 (even for v3) to change the frequency of the tot clock")
+        await self.boardDriver.rfg.write_chip_version(
+            value=4, flush=True
+        )
         self.log.info(f"Setting up clocks, use_tlu = {self.use_tlu}, fpga_ts size = {self.get_fpga_ts_size_bits()} bits")
         await self.boardDriver.setExternalClock(enable=self.use_tlu)
         tc = await self.boardDriver.rfg.read_layers_fpga_timestamp_ctrl()
@@ -574,6 +579,8 @@ class ASTEP(Satellite):
             frames = await self.boardDriver.getLayerStatFRAMECounter(i)
             errors = await self.boardDriver.getLayerWrongLength(i)
             self.log.debug(f"Layer {i} stats: {idle} idle bytes, {frames} frames, {errors} errors")
+
+    #@schedule_metric("Byte", MetricsType.LAST_VALUE
 
     @async_run
     async def do_run(self, payload: any) -> str:

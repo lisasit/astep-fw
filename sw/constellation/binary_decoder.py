@@ -10,6 +10,7 @@ import numpy as np
 import h5py
 from histogram_filler import HistogramFiller
 from hit_classes import HalfHit_v3, Hit_v4
+from hit_filter import HitFilter
 
 def flatten(to_flatten):
     result_dict = {}
@@ -37,7 +38,7 @@ def prepare_dict_for_root(dict_to_prepare):
 
 class Decoder:
     #I did not add the code for split hits at the endges of the readout blocks. Will add in the future if necessary
-    def __init__(self, bin_filename, chip_version, fpga_ts_clock_freq=80e6, constellation_config_filename=None, chip_config_filenames=None, verbose=True, max_nreadouts=None):
+    def __init__(self, bin_filename, chip_version, fpga_ts_length=None, nlayers=None, nchips_per_layer=None, fpga_ts_clock_freq=80e6, constellation_config_filename=None, chip_config_filenames=None, verbose=True, max_nreadouts=None):
         """
         constellation_config_filename and chip_config_filenames can be added to provide metadata about the run that will be saved to the root file. If they are not provided, Decoder will try to look for a .toml (for the constellation config) and all .yml (for the chip configs) files with the same timestamp in the same directory as the binary file. If they are not found, the metadata is not written
         """
@@ -47,6 +48,11 @@ class Decoder:
         self.verbose = verbose
         self.chip_version = chip_version
         self.fpga_ts_clock_freq = fpga_ts_clock_freq
+        self.fpga_ts_length = fpga_ts_length
+        self.nlayers = nlayers
+        self.nchips_per_layer = nchips_per_layer
+        self.count_skipped_bytes = 0
+        self.count_total_bytes = 0
         if self.verbose:
             print(f'Decoding {bin_filename}')
 
@@ -114,11 +120,16 @@ class Decoder:
             print(f'Writing data to  {filename}:')
             print(f'{len(self.hits)} hits')
             if self.chip_version == 3:
-                print(f'{len(self.halfhits)} halfhtis')
+                print(f'{len(self.halfhits)} halfhits')
                 print(f'ratio of hits to halfhits = {len(self.hits)/len(self.halfhits) if len(self.halfhits) != 0 else np.inf}')
                 col_hh = [hh for hh in self.halfhits if hh.isCol]
                 print(f'ratio of column to row halfhits = {len(col_hh)/(len(self.halfhits) - len(col_hh)) if len(self.halfhits) != len(col_hh) else np.inf} ({len(col_hh)} col halfhits and {len(self.halfhits) - len(col_hh)} row halfhits)')
-            print(f'Derived FPGA timestamp length {int(np.median(self.fpga_ts_lengths)) if len(self.fpga_ts_lengths) != 0 else None} bytes')
+            if self.fpga_ts_length is None:
+                print(f'Derived FPGA timestamp length {int(np.median(self.fpga_ts_lengths)) if len(self.fpga_ts_lengths) != 0 else None} bytes')
+            else:
+                print(f'Provided FPGA timestamp length {self.fpga_ts_length} bytes')
+            print(f'{self.count_skipped_bytes} bytes skipped while decoding out of {self.count_total_bytes} bytes of data ({self.count_skipped_bytes/self.count_total_bytes*100}%)')
+            
 
         if '.root' in filename:
             self.write_hits_to_root_file(filename)
@@ -174,9 +185,16 @@ class Decoder:
             ('trigger_number', 'u4')
         ])
         print(f'{len([1 for hit in self.hits if hit.fpga_ts < 0.01])} hits with fpga_ts == 0')
+        hit_filter = HitFilter([hit for hit in self.hits if hit.fpga_ts > 0.1])
+        hit_filter.filter(always_ok=True)
+        #data_hits = np.array(
+        #    [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits if hit.fpga_ts > 0.1], dtype=HIT_TYPE
+        #) # fpga_ts in ns
         data_hits = np.array(
-            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits if hit.fpga_ts > 0.1], dtype=HIT_TYPE
+            [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in hit_filter.filtered_hits], dtype=HIT_TYPE
         ) # fpga_ts in ns
+        if self.verbose:
+            print(f'{len(hit_filter.hits)} hits before filtering, {len(hit_filter.filtered_hits)} hits after filtering ({len(hit_filter.hits) - len(hit_filter.filtered_hits)} hits filtered out)')
         with h5py.File(filename, 'w') as hdf5_file:
             dset = hdf5_file.create_dataset("Hits", data=data_hits)
 
@@ -211,7 +229,7 @@ class Decoder:
                     print(f'Reached {self.max_nreadouts} readouts, stopping')
                 break
         if self.verbose:
-            print(f'{readout_id} packets read in total')
+            print(f'{readout_id} readout blocks read in total')
 
 
     def read_block(self):
@@ -220,16 +238,34 @@ class Decoder:
             return None
         nbits = int.from_bytes(read_int, "little")
         result_block = self.bin_file.read(nbits)
+        self.count_total_bytes += len(result_block)
         return result_block
 
 
     def check_packet(self, packet):
         if len(packet) - 1 != int(packet[0]):
             return False
-        if self.chip_version == 3 and len(packet) not in [9, 11, 13, 15]:
-            return False
-        if self.chip_version == 4 and len(packet) not in [12, 14, 16, 18]:
-            return False
+        if self.chip_version == 3:
+            if self.fpga_ts_length is None and len(packet) not in [9, 11, 13, 15]:
+                return False
+            if self.fpga_ts_length is not None and len(packet) - 7 != self.fpga_ts_length:
+                return False
+            layer = int(packet[1])
+            # byte 2 is a header. 3 bit payload, 5 bit chip id
+            byte = int(packet[2])
+            chip_id = byte >> 3
+            payload = byte & 0b00000111
+            if self.nlayers is not None and layer > self.nlayers:
+                return False
+            if self.nchips_per_layer is not None and chip_id >= self.nchips_per_layer:
+                return False
+            if payload != 4:
+                return False
+        if self.chip_version == 4:
+            if self.fpga_ts_length is None and len(packet) not in [12, 14, 16, 18]:
+                return False
+            if self.fpga_ts_length is not None and len(packet) - 10 != self.fpga_ts_length:
+                return False
         return True
 
 
@@ -248,6 +284,7 @@ class Decoder:
                 self.leftovers = packet
                 break
             else:
+                self.count_skipped_bytes += 1
                 i += 1
         return result_packets
 
@@ -256,6 +293,19 @@ class Decoder:
             return self.decode_packet_v3(hit_packet, readout_id)
         if self.chip_version == 4:
             return self.decode_packet_v4(hit_packet, readout_id)
+
+    def check_halfhit(self, halfhit):
+        #print('Checking halfhit')
+        #print(f'{self.nlayers} >= {halfhit.layer}?')
+        #print(f'{self.nchips_per_layer} > halfhit.chip_id?')
+        #print(f'{halfhit.payload} == 4?')
+        if self.nlayers is not None and halfhit.layer > self.nlayers:
+            return False
+        if self.nchips_per_layer is not None and halfhit.chip_id >= self.nchips_per_layer:
+            return False
+        if halfhit.payload != 4:
+            return False
+        return True
 
     def decode_packet_v3(self, hit_packet, readout_id):
         if len(hit_packet) > 15:

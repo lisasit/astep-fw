@@ -2,7 +2,7 @@ from constellation.binary_decoder import Decoder
 import argparse
 import os
 
-def decode(filename, force, max_nreadouts, file_extensions, chip_version):
+def decode(filename, force, max_nreadouts, file_extensions, chip_version, fpga_ts_length, nchips_per_layer, nlayers):
     os.makedirs('/'.join(filename.split('/')[:-1]), exist_ok=True)
 
     name_output = filename.replace('raw_data', 'decoded')
@@ -16,7 +16,7 @@ def decode(filename, force, max_nreadouts, file_extensions, chip_version):
             print(f'File decoded with all ({file_extensions}) extensions, skipping')
             return
 
-    d = Decoder(filename, chip_version=chip_version, max_nreadouts=max_nreadouts)
+    d = Decoder(filename, chip_version=chip_version, max_nreadouts=max_nreadouts, fpga_ts_length=fpga_ts_length, nchips_per_layer=nchips_per_layer, nlayers=nlayers)
     d.decode()
     for file_extension in file_extensions:
         d.write_hits_to_file(name_output.replace('.bin', file_extension))
@@ -49,7 +49,7 @@ def main(args):
             file_extensions.append('.h5')
         if args.root:
             file_extensions.append('.root')
-        decode(filename, args.force, args.max_nreadouts, file_extensions, args.version)
+        decode(filename, args.force, args.max_nreadouts, file_extensions, args.version, fpga_ts_length=args.fpga_ts_length, nchips_per_layer=args.nchips_per_layer, nlayers=args.nlayers)
 
 
 if __name__ == "__main__":
@@ -63,6 +63,9 @@ if __name__ == "__main__":
     parser.add_argument('-h5', '--h5', required=False, default=False, action="store_true", help='Write the decoded output into an h5 file')
     parser.add_argument('-root', '--root', required=False, default=False, action="store_true", help='Write the decoded output into a root file')
     parser.add_argument('-v', '--version', required=True, help='Chip version', type=int)
+    parser.add_argument('--fpga_ts_length', required=False, help='Length of the FPGA imestamp in bytes', type=int, default=None)
+    parser.add_argument('--nchips_per_layer', required=False, help='Number of chips per layer', type=int, default=None)
+    parser.add_argument('--nlayers', required=False, help='Number of layers', type=int, default=None)
 
     args = parser.parse_args()
     main(args)
