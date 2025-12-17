@@ -577,6 +577,24 @@ class Asic:
         data.extend([SPI_EMPTY_BYTE] * ((self._num_chips - 1) * 2))
         logger.debug("Length: %d\n Data (%db): %s\n", len(data), len(config), config)
         return data
+    
+
+    def set_tdac_row0_all(self, value: int, layer=0):
+        """
+        Sets all bits of tdac_config_0 row0 to 0b00011 (decimal 3) for all 16 fields.
+        Assumes config is a dict loaded from your YAML.
+        """
+        num_fields = 16
+        bits_per_field = 5
+        value_per_field = 0b00001
+
+        # Build the full value: 16 fields of 0b00011
+        value = 0
+        for _ in range(num_fields):
+            value = (value << bits_per_field) | value_per_field
+
+        # Set row0: [80, value]
+        self.asic_tdac_config[f"tdac_config_{layer}"]["row0"] = [num_fields * bits_per_field, value]
 
     ##################################
     ## OLD ORIGINAL CODE WHERE THE ASIC MODEL also Wrote its config via RFG

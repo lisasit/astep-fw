@@ -125,7 +125,7 @@ class ASTEP(Satellite):
             if self.setup_type == "gecco":
                 self.boardDriver = drivers.boards.getGeccoFTDIDriver()
                 # asyncio.run(self.astro.open_fpga(cmod=False, uart=False))
-            elif setup_type == "cmod":
+            elif self.setup_type == "cmod":
                 self.boardDriver = drivers.boards.getCMODUartDriver("COM6")
                 # asyncio.run(self.astro.open_fpga(cmod=True, uart=True))
             else:
@@ -136,6 +136,12 @@ class ASTEP(Satellite):
             await self.boardDriver.open()
         fwid = await self.boardDriver.readFirmwareID()
         self.log.info(f"FW ID: {fwid}")
+
+    async def fpga_configure_chipversion(self):
+        """Configure chip version"""
+        await self.boardDriver.rfg.write_chip_version(
+            value=self.chip_version, flush=True
+        )
 
     async def board_driver_print_status(self, time=0.0, buff=0):
         status = [
@@ -260,6 +266,8 @@ class ASTEP(Satellite):
     async def write_configuration(self):
         await self.board_driver_print_status()
 
+        await self.fpga_configure_chipversion()
+
         for layer in range(self.nlayers):
             await self.boardDriver.zeroLayerWrongLength(layer, flush=True)
 
@@ -351,7 +359,18 @@ class ASTEP(Satellite):
         )
 
         await self.write_configuration()
+
+        if self.chip_version == 4:
+            self.boardDriver.asics[self.analog_layer].set_tdac_row0_all(0)
+            await self.boardDriver.writeSRAsicConfig(ckdiv=16, tdac=True)
+
+        lc = await self.boardDriver.rfg.read_layer_0_cfg_ctrl()
+
+        self.log.info(f'Layercontrol0: {bin(lc)}')
+
         return f"AstroPix is configured"
+    
+
 
     @async_run
     async def do_reconfigure(self, partial_config) -> str:
@@ -537,6 +556,14 @@ class ASTEP(Satellite):
 
         self.log.info(f"Reinitializing the chip")
         await self.write_configuration()
+
+        if self.chip_version == 4:
+            self.boardDriver.asics[self.analog_layer].set_tdac_row0_all(0)
+            self.log.info(
+                f"tdac config : {self.boardDriver.asics[self.analog_layer].asic_tdac_config[f"tdac_config_{0}"]["row0"]}"
+            )
+            await self.boardDriver.writeSRAsicConfig(tdac=True)
+        
         return "AstroPix is reinitialized"
 
     def do_landing(self) -> str:
