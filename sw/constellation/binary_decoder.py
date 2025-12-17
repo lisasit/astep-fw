@@ -333,7 +333,7 @@ class Decoder:
             # byte 6 is ToT LSB
             halfhit.tot_lsb = int(hit_packet[6])
             # bytes 7-end are the FPGA timestamp
-            halfhit.fpga_ts = np.uint64(int.from_bytes(hit_packet[7:], 'big'))
+            halfhit.fpga_ts = np.uint64(int.from_bytes(hit_packet[len(hit_packet) - self.fpga_ts_length:], 'big'))
 
             # constructing ToT total
             halfhit.tot_total = (halfhit.tot_msb << 8) + halfhit.tot_lsb
