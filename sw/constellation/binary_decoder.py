@@ -164,11 +164,11 @@ class Decoder:
 
                 root_file['halfhits'] = result_dict_hh
 
-            if self.constellation_config is not None:
-                root_file['constellation_config'] = prepare_dict_for_root(self.constellation_config)
+            #if self.constellation_config is not None:
+            #    root_file['constellation_config'] = prepare_dict_for_root(self.constellation_config)
 
-            if self.chip_config is not None:
-                root_file['chip_config'] = prepare_dict_for_root(self.chip_config)
+            #if self.chip_config is not None:
+            #    root_file['chip_config'] = prepare_dict_for_root(self.chip_config)
 
             if make_histograms:
                 hists = histogram_filler.get_histograms()
@@ -186,7 +186,7 @@ class Decoder:
         ])
         print(f'{len([1 for hit in self.hits if hit.fpga_ts < 0.01])} hits with fpga_ts == 0')
         hit_filter = HitFilter([hit for hit in self.hits if hit.fpga_ts > 0.1])
-        hit_filter.filter(always_ok=True)
+        hit_filter.filter(always_ok=False)
         #data_hits = np.array(
         #    [(hit.col, hit.row, hit.tot, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits if hit.fpga_ts > 0.1], dtype=HIT_TYPE
         #) # fpga_ts in ns
@@ -195,39 +195,44 @@ class Decoder:
         ) # fpga_ts in ns
         if self.verbose:
             print(f'{len(hit_filter.hits)} hits before filtering, {len(hit_filter.filtered_hits)} hits after filtering ({len(hit_filter.hits) - len(hit_filter.filtered_hits)} hits filtered out)')
+            ts_diff = (hit_filter.filtered_hits[-1].fpga_ts - hit_filter.filtered_hits[0].fpga_ts) / self.fpga_ts_clock_freq
+            print(f'{ts_diff} s between the lowest and the highest FPGA timestamp. Rate is ~{len(hit_filter.filtered_hits)/ts_diff} hits/s')
         with h5py.File(filename, 'w') as hdf5_file:
             dset = hdf5_file.create_dataset("Hits", data=data_hits)
 
     def decode(self):
         readout_id = 0
         block_lengths = []
-        while True:
-            block = self.read_block()
-            if block is None:
-                break
-            readout_id += 1
-            hit_packets = self.split_packets(block)
+        try:
+            while True:
+                block = self.read_block()
+                if block is None:
+                    break
+                readout_id += 1
+                hit_packets = self.split_packets(block)
 
-            decoded_packets = [self.decode_packet(packet, readout_id) for packet in hit_packets]
-            decoded_packets = [decoded_packet for decoded_packet in decoded_packets if decoded_packet is not None]
-            if self.chip_version == 3:
-                self.halfhits += decoded_packets
-                matcher = Matcher(decoded_packets)
-                matcher.match()
-                self.hits += matcher.hits
-            elif self.chip_version == 4:
-                self.hits += decoded_packets
+                decoded_packets = [self.decode_packet(packet, readout_id) for packet in hit_packets]
+                decoded_packets = [decoded_packet for decoded_packet in decoded_packets if decoded_packet is not None]
+                if self.chip_version == 3:
+                    self.halfhits += decoded_packets
+                    matcher = Matcher(decoded_packets)
+                    matcher.match(strategy='all_row')
+                    self.hits += matcher.hits
+                elif self.chip_version == 4:
+                    self.hits += decoded_packets
 
-            if self.verbose:
-                block_lengths.append(len(block))
-                if readout_id % 100 == 0:
-                    print(f'Read {readout_id} readout blocks, average block length is {np.mean(block_lengths)}')
-                    block_lengths = []
-
-            if self.max_nreadouts is not None and readout_id >= self.max_nreadouts:
                 if self.verbose:
-                    print(f'Reached {self.max_nreadouts} readouts, stopping')
-                break
+                    block_lengths.append(len(block))
+                    if readout_id % 100 == 0:
+                        print(f'Read {readout_id} readout blocks, average block length is {np.mean(block_lengths)}')
+                        block_lengths = []
+
+                if self.max_nreadouts is not None and readout_id >= self.max_nreadouts:
+                    if self.verbose:
+                        print(f'Reached {self.max_nreadouts} readouts, stopping')
+                    break
+        except KeyboardInterrupt:
+            pass
         if self.verbose:
             print(f'{readout_id} readout blocks read in total')
 

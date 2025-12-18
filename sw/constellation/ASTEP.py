@@ -15,6 +15,9 @@ import toml
 import yaml
 from constellation.core.configuration import Configuration
 from constellation.core.satellite import Satellite
+from constellation.core.message.cscp1 import SatelliteState
+from constellation.core.monitoring import schedule_metric
+from constellation.core.cmdp import MetricsType
 
 import drivers.boards
 
@@ -24,6 +27,10 @@ from astep import AstepRun
 
 class ASTEP(Satellite):
     """Satellite for controlling an AstroPix chip"""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.buffer_size = 0
 
     def async_run(func):
         def internal_func(self, *args, **kwargs):
@@ -552,12 +559,13 @@ class ASTEP(Satellite):
         return "AstroPix is reinitialized"
 
     def do_landing(self) -> str:
-        await self.print_stats()
+        #await self.print_stats()
         return "No way to control anything from here, consider AstroPix landed"
 
     @async_run
     async def do_starting(self, run_identifier: str):
         self.run_identifier = run_identifier
+        self.buffer_size = 0
         self.create_files_for_run()
         if self.inject:
             await self.boardDriver.geccoGetInjectionBoard().start()
@@ -581,7 +589,30 @@ class ASTEP(Satellite):
             errors = await self.boardDriver.getLayerWrongLength(i)
             self.log.info(f"Layer {i} stats: {idle} idle bytes, {frames} frames, {errors} errors")
 
-    #@schedule_metric("Byte", MetricsType.LAST_VALUE
+    @schedule_metric("Byte", MetricsType.LAST_VALUE, 5)
+    def BUFFER_SIZE(self) -> Any:
+        if self.fsm.current_state_value == SatelliteState.RUN:
+            return self.buffer_size
+        return None
+
+    @schedule_metric("", MetricsType.LAST_VALUE, 5)
+    def IDLE_COUNT(self) -> Any:
+        if self.fsm.current_state_value == SatelliteState.RUN:
+            return asyncio.run(self.boardDriver.getLayerStatIDLECounter(0))
+        return None
+
+    @schedule_metric("", MetricsType.LAST_VALUE, 5)
+    def FRAME_COUNT(self) -> Any:
+        if self.fsm.current_state_value == SatelliteState.RUN:
+            return asyncio.run(self.boardDriver.getLayerStatFRAMECounter(0))
+        return None
+
+    @schedule_metric("", MetricsType.LAST_VALUE, 5)
+    def WRONG_LENGTH_COUNT(self) -> Any:
+        if self.fsm.current_state_value == SatelliteState.RUN:
+            return asyncio.run(self.boardDriver.getLayerWrongLength(0))
+        return None
+
 
     @async_run
     async def do_run(self, payload: any) -> str:
@@ -592,17 +623,17 @@ class ASTEP(Satellite):
                     await self.boardDriver.writeSPIBytesToLane(
                         lane=layer, bytes=[0x00] * 255
                     )
-            buffer_size = await self.boardDriver.readoutGetBufferSize()
-            self.log.debug(f"buffer size = {buffer_size}")
-            if buffer_size > 17000:
+            self.buffer_size = await self.boardDriver.readoutGetBufferSize()
+            self.log.debug(f"buffer size = {self.buffer_size}")
+            if self.buffer_size > 17000:
                 self.log.error(
-                    f"Buffer size too big ({buffer_size}), probably something went wrong with the readout"
+                    f"Buffer size too big ({self.buffer_size}), probably something went wrong with the readout"
                 )
                 continue
             counts = (
                 self.nbytes_to_read_out
                 if self.nbytes_to_read_out is not None
-                else buffer_size
+                else self.buffer_size
             )
             readout = await self.boardDriver.readoutReadBytes(counts)
             if buffer_size > 0:  # if there is data contained in the readout stream

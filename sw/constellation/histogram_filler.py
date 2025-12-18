@@ -8,9 +8,15 @@ class HistogramFiller:
         self.decoder = decoder
         self.verbose = verbose
         self.derive_chip_configuration()
+        if self.decoder.chip_version == 3:
+            self.npix_row = 35
+            self.npix_col = 35
+        elif self.decoder.chip_version == 4:
+            self.npix_row = 13
+            self.npix_col = 16
         self.hitmaps = [[Hist(
-            hist.axis.Regular(35, 0, 35, name="col"),
-            hist.axis.Regular(35, 0, 35, name="row")
+            hist.axis.Regular(self.npix_col, 0, self.npix_col, name="col"),
+            hist.axis.Regular(self.npix_row, 0, self.npix_row, name="row")
             ) for i in range(self.nchips_per_layer)] for j in range(self.nlayers)]
 
     def fill_histograms(self):
@@ -24,27 +30,26 @@ class HistogramFiller:
             self.nchips_per_layer = 1
         else:
             self.nlayers = len(self.decoder.chip_config)
-            first_config = self.decoder.chip_config[list(self.decoder.chip_config.keys())[0]]['astropix3'] # TODO change for other versions???
+            first_config = self.decoder.chip_config[list(self.decoder.chip_config.keys())[0]][f'astropix{self.decoder.chip_version}'] # TODO change for other versions???
             self.nchips_per_layer = len([key for key in first_config if 'config' in key])
             if self.verbose:
                 print(f'Derived configuration from the config file(s): {self.nlayers} layers, each with {self.nchips_per_layer} chips')
 
     def get_masks(self):
-        self.masks = [[np.full((35, 35), 0) for i in range(self.nchips_per_layer)] for j in range(self.nlayers)]
+        self.masks = [[np.full((self.npix_col, selfnpix_row), 0) for i in range(self.nchips_per_layer)] for j in range(self.nlayers)]
         if self.decoder.chip_config is not None:
             for ilayer in range(self.nlayers):
                 layer_key = [key for key in self.decoder.chip_config if f'layer{ilayer}' in key][0]
-                layer_config = self.decoder.chip_config[layer_key]['astropix3'] # TODO change for other versions???
+                layer_config = self.decoder.chip_config[layer_key][f'astropix{self.decoder.chip_version}'] # TODO change for other versions???
                 for ichip in range(self.nchips_per_layer):
                     chip_config = layer_config[f'config_{ichip}']['recconfig']
-                    for col in range(35):
+                    for col in range(self.npix_col):
                         col_mask = chip_config[f'col{col}'][1]
-                        for row in range(35):
+                        for row in range(self.npix_row):
                             if col_mask & 2**(1 + row):
                                 self.masks[ilayer][ichip][col, row] = 1
 
     def fill_hitmap_histogram(self):
-        self.get_masks()
         for hit in self.decoder.hits:
             self.hitmaps[0][0].fill(hit.col, hit.row)
         # for ilayer in range(self.nlayers):
