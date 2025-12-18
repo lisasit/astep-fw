@@ -30,7 +30,7 @@ class ASTEP(Satellite):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.buffer_size = 0
+        self.buffer_size_queue = []
 
     def async_run(func):
         def internal_func(self, *args, **kwargs):
@@ -565,7 +565,7 @@ class ASTEP(Satellite):
     @async_run
     async def do_starting(self, run_identifier: str):
         self.run_identifier = run_identifier
-        self.buffer_size = 0
+        self.buffer_size_queue.clear()
         self.create_files_for_run()
         if self.inject:
             await self.boardDriver.geccoGetInjectionBoard().start()
@@ -590,28 +590,32 @@ class ASTEP(Satellite):
             self.log.info(f"Layer {i} stats: {idle} idle bytes, {frames} frames, {errors} errors")
 
     @schedule_metric("Byte", MetricsType.LAST_VALUE, 5)
-    def BUFFER_SIZE(self) -> Any:
+    def BUFFER_SIZE(self):
         if self.fsm.current_state_value == SatelliteState.RUN:
-            return self.buffer_size
+            if self.buffer_size_queue:
+                mean_buffer_size = float(np.mean(self.buffer_size_queue))
+                self.buffer_size_queue.clear()
+                return mean_buffer_size
         return None
 
-    @schedule_metric("", MetricsType.LAST_VALUE, 5)
-    def IDLE_COUNT(self) -> Any:
-        if self.fsm.current_state_value == SatelliteState.RUN:
-            return asyncio.run(self.boardDriver.getLayerStatIDLECounter(0))
-        return None
+    #@schedule_metric("", MetricsType.LAST_VALUE, 5)
+    #@async_run
+    #async def IDLE_COUNT(self):
+    #    if self.fsm.current_state_value == SatelliteState.RUN:
+    #        return await self.boardDriver.getLayerStatIDLECounter(0)
+    #    return None
 
-    @schedule_metric("", MetricsType.LAST_VALUE, 5)
-    def FRAME_COUNT(self) -> Any:
-        if self.fsm.current_state_value == SatelliteState.RUN:
-            return asyncio.run(self.boardDriver.getLayerStatFRAMECounter(0))
-        return None
+    #@schedule_metric("", MetricsType.LAST_VALUE, 5)
+    #def FRAME_COUNT(self):
+    #    if self.fsm.current_state_value == SatelliteState.RUN:
+    #        return asyncio.run(self.boardDriver.getLayerStatFRAMECounter(0))
+    #    return None
 
-    @schedule_metric("", MetricsType.LAST_VALUE, 5)
-    def WRONG_LENGTH_COUNT(self) -> Any:
-        if self.fsm.current_state_value == SatelliteState.RUN:
-            return asyncio.run(self.boardDriver.getLayerWrongLength(0))
-        return None
+    #@schedule_metric("", MetricsType.LAST_VALUE, 5)
+    #def WRONG_LENGTH_COUNT(self):
+    #    if self.fsm.current_state_value == SatelliteState.RUN:
+    #        return asyncio.run(self.boardDriver.getLayerWrongLength(0))
+    #    return None
 
 
     @async_run
@@ -623,20 +627,21 @@ class ASTEP(Satellite):
                     await self.boardDriver.writeSPIBytesToLane(
                         lane=layer, bytes=[0x00] * 255
                     )
-            self.buffer_size = await self.boardDriver.readoutGetBufferSize()
-            self.log.debug(f"buffer size = {self.buffer_size}")
-            if self.buffer_size > 17000:
+            buffer_size = await self.boardDriver.readoutGetBufferSize()
+            self.log.debug(f"buffer size = {buffer_size}")
+            if buffer_size > 17000:
                 self.log.error(
-                    f"Buffer size too big ({self.buffer_size}), probably something went wrong with the readout"
+                    f"Buffer size too big ({buffer_size}), probably something went wrong with the readout"
                 )
                 continue
             counts = (
                 self.nbytes_to_read_out
                 if self.nbytes_to_read_out is not None
-                else self.buffer_size
+                else buffer_size
             )
             readout = await self.boardDriver.readoutReadBytes(counts)
             if buffer_size > 0:  # if there is data contained in the readout stream
+                self.buffer_size_queue.append(buffer_size)
                 self.bitfile.write(buffer_size.to_bytes(2, byteorder="little"))
                 self.bitfile.write(readout)
                 ireadout += 1
