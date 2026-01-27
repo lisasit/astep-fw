@@ -188,11 +188,11 @@ class Decoder:
         self.root_filename = filename
         self.root_file = uproot.recreate(filename)
         if self.chip_version == 3:
-            self.root_file['hits'] = {key : [] for key in Hit_v3().__dict__}
-            self.root_file['halfhits'] = {key : [] for key in HalfHit_v3().__dict__}
+            self.root_file.mktree('hits', {key : [] for key in Hit_v3().__dict__})
+            self.root_file.mktree('halfhits', {key : [] for key in HalfHit_v3().__dict__})
 
         if self.chip_version == 4:
-            self.root_file['hits'] = {key : [] for key in Hit_v4().__dict__}
+            self.root_file.mktree('hits', {key : [] for key in Hit_v4(True).__dict__})
 
     def prepare_h5_file(self, filename):
         self.h5_filename = filename
@@ -301,6 +301,11 @@ class Decoder:
                 halfhit_dict = {key : [getattr(hh, key) for hh in self.halfhits] for key in HalfHit_v3().__dict__}
                 self.root_file['hits'].extend(hit_dict)
                 self.root_file['halfhits'].extend(halfhit_dict)
+            elif self.chip_version == 4:
+                for hit in self.hits:
+                    hit.get_dict()
+                hit_dict = {key : [getattr(hit, key) for hit in self.hits] for key in Hit_v4(True).__dict__}
+                self.root_file['hits'].extend(hit_dict)
         if self.h5_file is not None:
             hit_filter = HitFilter(self.hits, self.previous_good_fpga_timestamp)
             hit_filter.filter(always_ok=False)
