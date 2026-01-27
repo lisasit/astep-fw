@@ -593,7 +593,7 @@ class ASTEP(Satellite):
     def BUFFER_SIZE(self):
         if self.fsm.current_state_value == SatelliteState.RUN:
             if self.buffer_size_queue:
-                mean_buffer_size = float(np.mean(self.buffer_size_queue))
+                mean_buffer_size = int(np.mean(self.buffer_size_queue))
                 self.buffer_size_queue.clear()
                 return mean_buffer_size
         return None
@@ -628,7 +628,6 @@ class ASTEP(Satellite):
                         lane=layer, bytes=[0x00] * 255
                     )
             buffer_size = await self.boardDriver.readoutGetBufferSize()
-            self.log.debug(f"buffer size = {buffer_size}")
             if buffer_size > 17000:
                 self.log.error(
                     f"Buffer size too big ({buffer_size}), probably something went wrong with the readout"
