@@ -9,8 +9,9 @@ import yaml
 import numpy as np
 import h5py
 from histogram_filler import HistogramFiller
-from hit_classes import HalfHit_v3, Hit_v4
-from hit_filter import HitFilter
+from hit_classes import HalfHit_v3, Hit_v4, Hit_v3
+from hit_filter_better import HitFilter
+from datetime import timedelta
 
 def flatten(to_flatten):
     result_dict = {}
@@ -36,6 +37,71 @@ def prepare_dict_for_root(dict_to_prepare):
         result_dict[key] = [result_dict[key]]
     return result_dict
 
+HIT_TYPE = np.dtype([
+        ('column', 'i4'),
+        ('row', 'i4'),
+        ('raw', 'i4'),
+        ('charge', 'd'),
+        ('timestamp', 'd'),
+        ('trigger_number', 'u4')
+    ])
+
+class Stats:
+    def __init__(self, chip_version, fpga_ts_length=None):
+        self.chip_version = chip_version
+        self.hit_count = 0
+        self.row_halfhit_count = 0
+        self.col_halfhit_count = 0
+        self.fpga_ts_length = fpga_ts_length
+        self.skipped_byte_count = 0
+        self.total_byte_count = 0
+        self.filtered_hit_count = 0
+        self.zero_ts_hit_count = 0
+        self.last_timestamp = None #ns
+        self.first_timestamp = None #ns
+
+    def get_time_string(self, timestamp1, timestamp2):
+        if timestamp1 is None or timestamp2 is None:
+            return None
+        seconds = np.max([timestamp1, timestamp2]) - np.min([timestamp1, timestamp2])
+        if seconds < 1:
+            return f'{round(seconds, 3)} s'
+        seconds = round(seconds)
+        return f'{seconds//3600} h {(seconds//60)%60} m {seconds%60} s'
+        # result_string = ""
+        # remainder = timestamp
+        # unit_count = 0
+        # if remainder / (60*60) > 1:
+        #     result_string +=  f'{round(remainder) // (60*60)} h '
+        #     remainder = remainder % (60*60)
+        #     unit_count += 1
+        # if unit_count > 0 or remainder / 60 > 1:
+        #     result_string +=  f'{round(remainder) // 60} m '
+        #     remainder = remainder % 60
+        #     unit_count += 1
+        # if unit_count > 0 or remainder > 1:
+        #     result_string += f'{round(remainder)} s '
+        #     remainder = timestamp - round(timestamp)
+        # if unit_count < 3 and (unit_count > 0 or remainder * 1000 > 1):
+        #     result_string += f'{round(remainder*1000)} ms '
+        #     remainder = remainder - round(remainder*1000)/1000
+
+
+    def print(self):
+        self.halfhit_count = self.row_halfhit_count + self.col_halfhit_count
+        print(f'{self.hit_count} hits')
+        if self.chip_version == 3:
+            print(f'{self.halfhit_count} halfhits')
+            print(f'ratio of hits to halfhits = {self.hit_count/self.halfhit_count if self.halfhit_count != 0 else np.inf}')
+            print(f'ratio of column to row halfhits = {self.col_halfhit_count/self.row_halfhit_count if self.row_halfhit_count != 0 else np.inf} ({self.col_halfhit_count} col halfhits and {self.row_halfhit_count} row halfhits)')
+        print(f'Provided FPGA timestamp length {self.fpga_ts_length} bytes')
+        print(f'{self.skipped_byte_count} bytes skipped while decoding out of {self.total_byte_count} bytes of data ({round(self.skipped_byte_count/self.total_byte_count*100, 2) if self.total_byte_count != 0 else np.inf}%)')
+        print(f'When (if) writing into the h5 file, {self.filtered_hit_count} hits were filtered out ({round(self.filtered_hit_count/self.hit_count, 2) if self.hit_count != 0 else np.inf}%), including {self.zero_ts_hit_count} hits with fpga timestamp 0')
+
+        print(f'First FPGA timestamp is {self.first_timestamp} ns')
+        print(f'Last FPGA timestamp is {self.last_timestamp} ns')
+        print(f'The decoded part approximately corresponds to {self.get_time_string(self.last_timestamp/1e9, self.first_timestamp/1e9)} of run time')
+
 class Decoder:
     #I did not add the code for split hits at the endges of the readout blocks. Will add in the future if necessary
     def __init__(self, bin_filename, chip_version, fpga_ts_length=None, nlayers=None, nchips_per_layer=None, fpga_ts_clock_freq=80e6, constellation_config_filename=None, chip_config_filenames=None, verbose=True, max_nreadouts=None):
@@ -53,6 +119,9 @@ class Decoder:
         self.nchips_per_layer = nchips_per_layer
         self.count_skipped_bytes = 0
         self.count_total_bytes = 0
+        self.root_file = None 
+        self.h5_file = None
+        self.stats = Stats(self.chip_version, self.fpga_ts_length)
         if self.verbose:
             print(f'Decoding {bin_filename}')
 
@@ -115,7 +184,27 @@ class Decoder:
         else:
             self.chip_config = None
 
-    def write_hits_to_file(self, filename):
+    def prepare_root_file(self, filename):
+        self.root_filename = filename
+        self.root_file = uproot.recreate(filename)
+        if self.chip_version == 3:
+            self.root_file['hits'] = {key : [] for key in Hit_v3().__dict__}
+            self.root_file['halfhits'] = {key : [] for key in HalfHit_v3().__dict__}
+
+        if self.chip_version == 4:
+            self.root_file['hits'] = {key : [] for key in Hit_v4().__dict__}
+
+    def prepare_h5_file(self, filename):
+        self.h5_filename = filename
+        self.h5_file =  h5py.File(filename, 'w')
+        self.h5_dataset = self.h5_file.create_dataset("Hits",  
+                                                        shape=(0, ), 
+                                                        maxshape=(None, ), 
+                                                        chunks=True,
+                                                        dtype=HIT_TYPE
+                                                        )
+
+    def OLD_write_hits_to_file(self, filename):
         if self.verbose:
             print(f'Writing data to  {filename}:')
             print(f'{len(self.hits)} hits')
@@ -138,7 +227,7 @@ class Decoder:
         else:
             print(f'ERROR! Unknown file extension in {filename}, only .root and .h5 are currently recognized')
 
-    def write_hits_to_root_file(self, filename, make_histograms=True):
+    def OLD_write_hits_to_root_file(self, filename, make_histograms=True):
         if make_histograms:
             print('Filling histograms...')
             histogram_filler = HistogramFiller(self, self.verbose)
@@ -175,7 +264,7 @@ class Decoder:
                 for key in hists:
                     root_file[f'histograms/{key}'] = hists[key]
 
-    def write_hits_to_hdf5_file(self, filename):
+    def OLD_write_hits_to_hdf5_file(self, filename):
         HIT_TYPE = np.dtype([
             ('column', 'i4'),
             ('row', 'i4'),
@@ -203,9 +292,45 @@ class Decoder:
         with h5py.File(filename, 'w') as hdf5_file:
             dset = hdf5_file.create_dataset("Hits", data=data_hits)
 
+    def write_hits(self):
+        if self.root_file is not None:
+            if self.chip_version == 3:
+                hit_dict = {key : [getattr(hit, key) for hit in self.hits] for key in Hit_v3().__dict__}
+                for hh in self.halfhits:
+                    hh.get_dict()
+                halfhit_dict = {key : [getattr(hh, key) for hh in self.halfhits] for key in HalfHit_v3().__dict__}
+                self.root_file['hits'].extend(hit_dict)
+                self.root_file['halfhits'].extend(halfhit_dict)
+        if self.h5_file is not None:
+            hit_filter = HitFilter(self.hits, self.previous_good_fpga_timestamp)
+            hit_filter.filter(always_ok=False)
+            self.previous_good_fpga_timestamp = hit_filter.last_good_fpga_timestamp
+            self.stats.filtered_hit_count += hit_filter.total_filtered_hits
+            self.stats.zero_ts_hit_count += hit_filter.zero_ts_hits
+            current_rows = self.h5_dataset.shape[0]
+            self.h5_dataset.resize((current_rows + len(hit_filter.filtered_hits), ))
+            self.h5_dataset[current_rows:] = np.array(
+                [(hit.col, hit.row, hit.tot_total, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in hit_filter.filtered_hits], dtype=HIT_TYPE
+            ) # fpga_ts in ns
+            self.h5_file.flush()
+
+        if self.stats.first_timestamp is None:
+            self.stats.first_timestamp = self.hits[0].fpga_ts / self.fpga_ts_clock_freq * 1e9
+        self.stats.last_timestamp = self.hits[-1].fpga_ts / self.fpga_ts_clock_freq * 1e9
+        self.stats.hit_count += len(self.hits)
+        self.stats.row_halfhit_count += len([1 for hh in self.halfhits if not hh.isCol])
+        self.stats.col_halfhit_count += len([1 for hh in self.halfhits if hh.isCol]) 
+        self.hits.clear()
+        self.halfhits.clear()
+
+
+
     def decode(self):
         readout_id = 0
         block_lengths = []
+        self.previous_good_fpga_timestamp = None
+        if self.root_file is None and self.h5_file is None:
+            print('WARNING! No files set up for writing, no output file will be created!!!')
         try:
             while True:
                 block = self.read_block()
@@ -221,6 +346,8 @@ class Decoder:
                     matcher = Matcher(decoded_packets)
                     matcher.match(strategy='all_all')
                     self.hits += matcher.hits
+                    if len(self.halfhits) > 1e6:
+                        self.write_hits()     
                 elif self.chip_version == 4:
                     self.hits += decoded_packets
 
@@ -236,8 +363,16 @@ class Decoder:
                     break
         except KeyboardInterrupt:
             pass
+        self.write_hits()
+        if self.root_file is not None:
+            self.root_file.close()
+            print(f'Wrote data to the .root file {self.root_filename}')
+        if self.h5_file is not None:
+            self.h5_file.close()
+            print(f'Wrote data to the .h5 file {self.h5_filename}')
         if self.verbose:
             print(f'{readout_id} readout blocks read in total')
+            self.stats.print()
 
 
     def read_block(self):
@@ -246,7 +381,7 @@ class Decoder:
             return None
         nbits = int.from_bytes(read_int, "little")
         result_block = self.bin_file.read(nbits)
-        self.count_total_bytes += len(result_block)
+        self.stats.total_byte_count += len(result_block)
         return result_block
 
 
@@ -292,7 +427,7 @@ class Decoder:
                 self.leftovers = packet
                 break
             else:
-                self.count_skipped_bytes += 1
+                self.stats.skipped_byte_count += 1
                 i += 1
         return result_packets
 
