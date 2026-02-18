@@ -46,20 +46,23 @@ class Matcher:
             return matches[0]
         return None
 
+    def check_timestamps(self, timestamp1, timestamp2, tolerance):
+            if abs(timestamp1 - timestamp2) <= tolerance:
+                return True
+            if abs(abs(timestamp1 - timestamp2) - 256) <= tolerance:
+                return True
+            return False
+
+    def find_ts_difference(self, timestamp1, timestamp2):
+        return min(abs(timestamp1 - timestamp2), abs(abs(timestamp1 - timestamp2) - 256))
+
     def find_match_mult(self, halfhit):
         if halfhit.isCol:
             other_halfhits = self.row_halfhits
         else:
             other_halfhits = self.col_halfhits
 
-        def check_timestamps(halfhit, other_halfhit, tolerance):
-            if abs(other_halfhit.timestamp - halfhit.timestamp) <= tolerance:
-                return True
-            if abs(abs(other_halfhit.timestamp - halfhit.timestamp) - 256) <= tolerance:
-                return True
-            return False
-
-        matches = [other_halfhit for other_halfhit in other_halfhits if check_timestamps(halfhit, other_halfhit, self.timestamp_tolerance) and abs(other_halfhit.get_tot_us() - halfhit.get_tot_us()) < self.tot_us_tolerance]
+        matches = [other_halfhit for other_halfhit in other_halfhits if self.check_timestamps(halfhit.timestamp, other_halfhit.timestamp, self.timestamp_tolerance) and abs(other_halfhit.get_tot_us() - halfhit.get_tot_us()) < self.tot_us_tolerance]
         return matches
 
     def sort_matches(self, key_hh_type):
@@ -73,8 +76,9 @@ class Matcher:
         matches = [[hh] for hh in key_hh]
         if len(matches) != 0:
             for hh in other_hh:
-                min_ts_diff = min([abs(hh.timestamp - match_group[0].timestamp) for match_group in matches])
-                matching_indices = [i for i in range(len(matches)) if abs(hh.timestamp - matches[i][0].timestamp) == min_ts_diff]
+                min_ts_diff = min([self.find_ts_difference(hh.timestamp, match_group[0].timestamp) for match_group in matches])
+                matching_indices = [i for i in range(len(matches)) if self.find_ts_difference(hh.timestamp, matches[i][0].timestamp) == min_ts_diff]
+                # matching_indices = [i for i in range(len(matches)) if self.find_ts_difference(hh.timestamp, matches[i][0].timestamp) <= self.timestamp_tolerance]
                 for match_i in matching_indices:
                     matches[match_i].append(hh)
         return matches

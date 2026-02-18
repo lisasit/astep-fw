@@ -315,7 +315,7 @@ class Decoder:
             current_rows = self.h5_dataset.shape[0]
             self.h5_dataset.resize((current_rows + len(hit_filter.filtered_hits), ))
             self.h5_dataset[current_rows:] = np.array(
-                [(hit.col, hit.row, hit.tot_total, hit.tot_us, hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in hit_filter.filtered_hits], dtype=HIT_TYPE
+                [(hit.col, hit.row, hit.tot_total, hit.tot_us, 1.*hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in hit_filter.filtered_hits], dtype=HIT_TYPE
             ) # fpga_ts in ns
             self.h5_file.flush()
 
@@ -413,6 +413,17 @@ class Decoder:
             if self.fpga_ts_length is None and len(packet) not in [12, 14, 16, 18]:
                 return False
             if self.fpga_ts_length is not None and len(packet) - 10 != self.fpga_ts_length:
+                return False
+            layer = int(packet[1])
+            # byte 2 is a header. 3 bit payload, 5 bit chip id
+            byte = int(packet[2])
+            chip_id = byte >> 3
+            payload = byte & 0b00000111
+            if self.nlayers is not None and layer > self.nlayers:
+                return False
+            if self.nchips_per_layer is not None and chip_id >= self.nchips_per_layer:
+                return False
+            if payload != 7:
                 return False
         return True
 

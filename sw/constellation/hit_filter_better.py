@@ -15,7 +15,7 @@ class HitFilter:
             return
         if self.previous_good_fpga_timestamp is None:
             prev_ts = min([hit.fpga_ts for hit in self.hits[:800]])
-            prev_ts_i = [i for i in range(800) if self.hits[i].fpga_ts == prev_ts][0]
+            prev_ts_i = [i for i in range(len(self.hits[:800])) if self.hits[i].fpga_ts == prev_ts][0]
         else:
             prev_ts = self.previous_good_fpga_timestamp
             prev_ts_i = 0
