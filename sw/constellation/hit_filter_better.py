@@ -26,7 +26,8 @@ class HitFilter:
             if hit.fpga_ts < 0.1:
                 self.zero_ts_hits += 1
                 continue
-            if hit.fpga_ts < prev_ts or hit.fpga_ts - prev_ts > 1000000000:
+            # if hit.fpga_ts < prev_ts or hit.fpga_ts - prev_ts > 1000000000:
+            if abs(hit.fpga_ts*1e-6 - prev_ts*1e-6) > 1000000000*1e-6:
                 continue
             prev_ts = hit.fpga_ts
             self.filtered_hits.append(hit)

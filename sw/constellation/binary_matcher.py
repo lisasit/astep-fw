@@ -3,20 +3,37 @@
 from hit_classes import Hit_v3
 
 class Matcher:
-    def __init__(self, halfhits, timestamp_tolerance=1, tot_us_tolerance=0.5):
+    def __init__(self, halfhits, block_to_use, timestamp_tolerance=1, tot_us_tolerance=0.5):
         """
         halfhits: list of halfhits for matching
         timestamp_tolerance: the maximum difference between the timestamps of halfhits that are matched
         tot_us_tolerance: the maximum difference between the tot in us for the halfhits that are matched
         """
-        for i, hh in enumerate(halfhits):
-            hh.index = i
+        i = 0
+        for block_number in range(len(halfhits)):
+            for hh in halfhits[block_number]:
+                hh.index = i
+                i += 1
 
-        self.row_halfhits = [halfhit for halfhit in halfhits if not halfhit.isCol]
-        self.col_halfhits = [halfhit for halfhit in halfhits if halfhit.isCol]
+        self.row_halfhits = [halfhit for halfhit in halfhits[block_to_use] if not halfhit.isCol]
+        self.col_halfhits = [halfhit for halfhit in halfhits[block_to_use] if halfhit.isCol]
+        self.row_halfhits_other = sum([[halfhit for halfhit in halfhits[block_number] if not halfhit.isCol] for block_number in range(len(halfhits))], [])
+        self.col_halfhits_other = sum([[halfhit for halfhit in halfhits[block_number] if halfhit.isCol] for block_number in range(len(halfhits))], [])
         self.timestamp_tolerance = timestamp_tolerance
         self.tot_us_tolerance = tot_us_tolerance
         self.hits = []
+        self.out_file = open('matches_run95.txt', 'a')
+        self.out_file.write('Next block!')
+        if len(halfhits[0]) == 0:
+            self.out_file.write(' no halfhits\n')
+        else:
+            self.out_file.write(f' {halfhits[0][0].readout_id}\n')
+        self.out_file.write('Halfhits:\n')
+        self.row_format = "{:>8}  {:>3}  {:>5}  {:>10}  {:>10}  {:>20}  {:<10}\n"
+        self.out_file.write(self.row_format.format("Index", "Loc", "isCol", "ToT", "ts", "fpga_ts", "matches"))
+
+    def __del__(self):
+        self.out_file.close()
 
     def calculate_chi2(self, one_halfhit, other_halfhit):
         chi2 = 0
@@ -65,18 +82,31 @@ class Matcher:
         matches = [other_halfhit for other_halfhit in other_halfhits if self.check_timestamps(halfhit.timestamp, other_halfhit.timestamp, self.timestamp_tolerance) and abs(other_halfhit.get_tot_us() - halfhit.get_tot_us()) < self.tot_us_tolerance]
         return matches
 
+    def is_possible_match(self, hh1, hh2):
+        return True
+        if hh1.isCol == hh2.isCol:
+            return False
+        if hh1.isCol and hh1.index < hh2.index:
+            return False 
+        if hh2.isCol and hh2.index < hh1.index:
+            return False
+        return True
+
     def sort_matches(self, key_hh_type):
         if key_hh_type == 'row':
-            key_hh = self.row_halfhits
+            key_hh = self.row_halfhits_other
             other_hh = self.col_halfhits
         else:
-            key_hh = self.col_halfhits
+            key_hh = self.col_halfhits_other
             other_hh = self.row_halfhits
 
         matches = [[hh] for hh in key_hh]
         if len(matches) != 0:
             for hh in other_hh:
-                min_ts_diff = min([self.find_ts_difference(hh.timestamp, match_group[0].timestamp) for match_group in matches])
+                ts_differences = [self.find_ts_difference(hh.timestamp, match_group[0].timestamp) for match_group in matches if self.is_possible_match(hh, match_group[0])]
+                if len(ts_differences) == 0:
+                    continue
+                min_ts_diff = min(ts_differences)
                 matching_indices = [i for i in range(len(matches)) if self.find_ts_difference(hh.timestamp, matches[i][0].timestamp) == min_ts_diff]
                 # matching_indices = [i for i in range(len(matches)) if self.find_ts_difference(hh.timestamp, matches[i][0].timestamp) <= self.timestamp_tolerance]
                 for match_i in matching_indices:
@@ -107,7 +137,8 @@ class Matcher:
         hit.chip_id = ref_hh.chip_id
         hit.tot_us = ref_hh.get_tot_us()
         hit.tot_total = ref_hh.tot_total
-        hit.fpga_ts = ref_hh.fpga_ts
+        # hit.fpga_ts = ref_hh.fpga_ts
+        hit.fpga_ts = min(hh1.fpga_ts, hh2.fpga_ts)
 
         hit.row_halfhit_index = row_halfhit.index
         hit.col_halfhit_index = col_halfhit.index
@@ -159,8 +190,31 @@ class Matcher:
 
             for match_group in matches_col:
                 for match_hh in match_group[1:]:
+                    # if abs(match_group[0].fpga_ts*1e-6 - match_hh.fpga_ts*1e-6) > 0.1*1e-6 or len([hit for hit in self.hits if hit.col_halfhit_index == match_group[0].index and hit.row_halfhit_index == match_hh.index]) == 0:
                     if len([hit for hit in self.hits if hit.col_halfhit_index == match_group[0].index and hit.row_halfhit_index == match_hh.index]) == 0:
                         self.hits.append(self.make_hit(match_group[0], match_hh, 'row'))
+
+            for i in range(len(self.row_halfhits_other) + len(self.col_halfhits_other)):
+                halfhit = [hh for hh in self.row_halfhits_other + self.col_halfhits_other if hh.index == i]
+                if len(halfhit) != 1:
+                    print('WOW! NO HALFHIT MATCH!!!')
+                halfhit = halfhit[0]
+                if halfhit.isCol:
+                    matches = [str(hit.row_halfhit_index) for hit in self.hits if hit.col_halfhit_index == halfhit.index]
+                else:
+                    matches = [str(hit.col_halfhit_index) for hit in self.hits if hit.row_halfhit_index == halfhit.index]
+                if len(matches) == 0:
+                    matches_str = '-'
+                else:
+                    matches_str = ', '.join(matches)
+                self.out_file.write(self.row_format.format(halfhit.index, halfhit.location, halfhit.isCol, halfhit.get_tot_us(), halfhit.timestamp, halfhit.fpga_ts*1.*1e9/80e6, matches_str)) 
+
+            row_format1 = "{:>8}  {:>3}  {:>3}  {:>20}\n"
+            self.out_file.write('Hits:\n')
+            self.out_file.write(row_format1.format("Index", "Row", "Col", "fpga_ts"))
+            for i, hit in enumerate(self.hits):
+                self.out_file.write(row_format1.format(i, hit.row, hit.col, hit.fpga_ts*1.*1e9/80e6)) 
+
 
 
 

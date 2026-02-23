@@ -12,6 +12,7 @@ from histogram_filler import HistogramFiller
 from hit_classes import HalfHit_v3, Hit_v4, Hit_v3
 from hit_filter_better import HitFilter
 from datetime import timedelta
+from collections import deque
 
 def flatten(to_flatten):
     result_dict = {}
@@ -122,6 +123,7 @@ class Decoder:
         self.root_file = None 
         self.h5_file = None
         self.stats = Stats(self.chip_version, self.fpga_ts_length)
+        self.halfhit_deque = deque(maxlen=1)
         if self.verbose:
             print(f'Decoding {bin_filename}')
 
@@ -195,14 +197,23 @@ class Decoder:
             self.root_file.mktree('hits', {key : [] for key in Hit_v4(True).__dict__})
 
     def prepare_h5_file(self, filename):
-        self.h5_filename = filename
-        self.h5_file =  h5py.File(filename, 'w')
-        self.h5_dataset = self.h5_file.create_dataset("Hits",  
-                                                        shape=(0, ), 
-                                                        maxshape=(None, ), 
-                                                        chunks=True,
-                                                        dtype=HIT_TYPE
-                                                        )
+        self.h5_filename = {}
+        self.h5_file =  {}
+        self.h5_dataset = {}
+
+        parts = filename.split('.')
+        for suffix in ['row', 'col', 'hits']:
+            if suffix == 'hits':
+                self.h5_filename[suffix] = filename
+            else:
+                self.h5_filename[suffix] = '.'.join(parts[:-1]) + '_' + suffix + '.' + parts[-1]
+            self.h5_file[suffix] =  h5py.File(self.h5_filename[suffix], 'w')
+            self.h5_dataset[suffix] = self.h5_file[suffix].create_dataset("Hits",  
+                                                                    shape=(0, ), 
+                                                                    maxshape=(None, ), 
+                                                                    chunks=True,
+                                                                    dtype=HIT_TYPE
+                                                                    )
 
     def OLD_write_hits_to_file(self, filename):
         if self.verbose:
@@ -312,12 +323,32 @@ class Decoder:
             self.previous_good_fpga_timestamp = hit_filter.last_good_fpga_timestamp
             self.stats.filtered_hit_count += hit_filter.total_filtered_hits
             self.stats.zero_ts_hit_count += hit_filter.zero_ts_hits
-            current_rows = self.h5_dataset.shape[0]
-            self.h5_dataset.resize((current_rows + len(hit_filter.filtered_hits), ))
-            self.h5_dataset[current_rows:] = np.array(
+            current_rows = self.h5_dataset['hits'].shape[0]
+            self.h5_dataset['hits'].resize((current_rows + len(hit_filter.filtered_hits), ))
+            self.h5_dataset['hits'][current_rows:] = np.array(
                 [(hit.col, hit.row, hit.tot_total, hit.tot_us, 1.*hit.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hit in hit_filter.filtered_hits], dtype=HIT_TYPE
             ) # fpga_ts in ns
-            self.h5_file.flush()
+            self.h5_file['hits'].flush()
+
+            for suffix in ['row', 'col']:
+                if suffix == 'row':
+                    halfhits = [hh for hh in self.halfhits if not hh.isCol]
+                else:
+                    halfhits = [hh for hh in self.halfhits if hh.isCol]
+                hit_filter = HitFilter(halfhits, self.previous_good_fpga_timestamp)
+                hit_filter.filter(always_ok=False)
+                current_rows = self.h5_dataset[suffix].shape[0]
+                self.h5_dataset[suffix].resize((current_rows + len(hit_filter.filtered_hits), ))
+                if suffix == 'row':
+                    data = np.array(
+                        [(0, hh.location, hh.tot_total, hh.get_tot_us(), 1.*hh.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hh in hit_filter.filtered_hits], dtype=HIT_TYPE
+                    ) # fpga_ts in ns
+                else:
+                    data = np.array(
+                        [(hh.location, 0, hh.tot_total, hh.get_tot_us(), 1.*hh.fpga_ts / self.fpga_ts_clock_freq * 1e9, 0) for hh in hit_filter.filtered_hits], dtype=HIT_TYPE
+                    ) #
+                self.h5_dataset[suffix][current_rows:] = data
+                self.h5_file[suffix].flush()
 
         if self.stats.first_timestamp is None:
             self.stats.first_timestamp = self.hits[0].fpga_ts / self.fpga_ts_clock_freq * 1e9
@@ -348,9 +379,16 @@ class Decoder:
                 decoded_packets = [decoded_packet for decoded_packet in decoded_packets if decoded_packet is not None]
                 if self.chip_version == 3:
                     self.halfhits += decoded_packets
-                    matcher = Matcher(decoded_packets)
-                    matcher.match(strategy='all_all')
-                    self.hits += matcher.hits
+                    self.halfhit_deque.append(decoded_packets)
+                    if len(self.halfhit_deque) == self.halfhit_deque.maxlen - 1:
+                        matcher = Matcher(self.halfhit_deque, block_to_use=0)
+                        matcher.match(strategy='all_all')
+                        self.hits += matcher.hits
+                    elif len(self.halfhit_deque) == self.halfhit_deque.maxlen:
+                        matcher = Matcher(self.halfhit_deque, block_to_use=self.halfhit_deque.maxlen - 1)
+                        matcher.match(strategy='all_all')
+                        self.hits += matcher.hits
+
                     if len(self.halfhits) > 1e6:
                         self.write_hits()     
                 elif self.chip_version == 4:
@@ -368,13 +406,19 @@ class Decoder:
                     break
         except KeyboardInterrupt:
             pass
+        self.halfhit_deque.popleft()
+        if len(self.halfhit_deque) != 0:
+            matcher = Matcher(self.halfhit_deque, block_to_use=0)
+            matcher.match(strategy='all_all')
+            self.hits += matcher.hits
         self.write_hits()
         if self.root_file is not None:
             self.root_file.close()
             print(f'Wrote data to the .root file {self.root_filename}')
-        if self.h5_file is not None:
-            self.h5_file.close()
-            print(f'Wrote data to the .h5 file {self.h5_filename}')
+        for suffix in self.h5_file:
+            if self.h5_file[suffix] is not None:
+                self.h5_file[suffix].close()
+                print(f'Wrote data to the .h5 file {self.h5_filename[suffix]}')
         if self.verbose:
             print(f'{readout_id} readout blocks read in total')
             self.stats.print()
