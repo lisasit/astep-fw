@@ -17,12 +17,8 @@ from constellation.core.configuration import Configuration
 from constellation.core.satellite import Satellite
 from constellation.core.message.cscp1 import SatelliteState
 from constellation.core.monitoring import schedule_metric
-from constellation.core.cmdp import MetricsType
 
 import drivers.boards
-
-# TODO imports are missing for sure
-from astep import AstepRun
 
 
 class ASTEP(Satellite):
@@ -44,18 +40,18 @@ class ASTEP(Satellite):
         return internal_func
 
     def do_initializing(self, config: Configuration):
-        self.outfile_prefix = config.setdefault("outfile_prefix", "")
-        self.outdir = config.setdefault("outdir", "../AstroPix")
+        self.outfile_prefix = config.get("outfile_prefix", "")
+        self.outdir = config.get("outdir", "../AstroPix")
         # Ensures output directory exists
         if os.path.exists(self.outdir) == False:
             os.makedirs(self.outdir)
         # should be gecco or cmod
         self.setup_type = config["setup_type"]
-        self.use_shift_register = config.setdefault("use_shift_register", False)
-        self.chips_per_row = config.setdefault("chips_per_row", [1])
-        self.autoread = config.setdefault("autoread", True)
+        self.use_shift_register = config.get("use_shift_register", False)
+        self.chips_per_row = config.get("chips_per_row", [1])
+        self.autoread = config.get("autoread", True)
 
-        self.config_directory = config.setdefault(
+        self.config_directory = config.get(
             "config_directory", f"{os.getcwd()}{os.path.sep}scripts{os.path.sep}config"
         )
         self.chip_configs = config["chip_configs"]
@@ -65,35 +61,35 @@ class ASTEP(Satellite):
         self.nlayers = len(self.chip_configs)
 
         self.chip_version = config["chip_version"]
-        self.injection_row = config.setdefault("injection_row", None)
-        self.injection_col = config.setdefault("injection_col", None)
-        self.injection_layer = config.setdefault("injection_layer", 0)
-        self.injection_chip = config.setdefault("injection_chip", 0)
+        self.injection_row = config.get("injection_row", None)
+        self.injection_col = config.get("injection_col", None)
+        self.injection_layer = config.get("injection_layer", 0)
+        self.injection_chip = config.get("injection_chip", 0)
         self.inject = (
             True
             if self.injection_row is not None and self.injection_col is not None
             else False
         )
-        self.injection_voltage = config.setdefault("injection_voltage", None)
-        self.injection_period = config.setdefault("injection_period", 100)
-        self.injection_clkdiv = config.setdefault("injection_clkdiv", 300)
-        self.injection_initdelay = config.setdefault("injection_initdelay", 100)
-        self.injection_cycle = config.setdefault("injection_cycle", 0)
-        self.injection_pulsesperset = config.setdefault("injection_pulsesperset", 1)
-        self.analog_layer = config.setdefault("analog_layer", 0)
-        self.analog_chip = config.setdefault("analog_chip", 0)
-        self.analog_col = config.setdefault("analog_col", 0)
-        self.threshold = config.setdefault("threshold", 1000)
-        self.injection_onchip = config.setdefault("injection_onchip", True)
-        self.threshold_pmos = config.setdefault("threshold_pmos", 1100)
-        self.vminuspix = config.setdefault("vminuspix", 1000)
+        self.injection_voltage = config.get("injection_voltage", None)
+        self.injection_period = config.get("injection_period", 100)
+        self.injection_clkdiv = config.get("injection_clkdiv", 300)
+        self.injection_initdelay = config.get("injection_initdelay", 100)
+        self.injection_cycle = config.get("injection_cycle", 0)
+        self.injection_pulsesperset = config.get("injection_pulsesperset", 1)
+        self.analog_layer = config.get("analog_layer", 0)
+        self.analog_chip = config.get("analog_chip", 0)
+        self.analog_col = config.get("analog_col", 0)
+        self.threshold = config.get("threshold", 1000)
+        self.injection_onchip = config.get("injection_onchip", True)
+        self.threshold_pmos = config.get("threshold_pmos", 1100)
+        self.vminuspix = config.get("vminuspix", 1000)
 
-        self.spi_clkdiv = config.setdefault("spi_clkdiv", 20)
-        self.spi_freq = config.setdefault("spi_freq", 1e6)
+        self.spi_clkdiv = config.get("spi_clkdiv", 20)
+        self.spi_freq = config.get("spi_freq", 1e6)
 
-        self.nbytes_to_read_out = config.setdefault("nbytes_to_read_out", None)
-        self.use_tlu = config.setdefault("use_tlu", False)
-        self.fpga_timestamp_size = config.setdefault("fpga_timestamp_size", 1) # 0 : 16, 1 : 32, 2 : 48, 3: 64
+        self.nbytes_to_read_out = config.get("nbytes_to_read_out", None)
+        self.use_tlu = config.get("use_tlu", False)
+        self.fpga_timestamp_size = config.get("fpga_timestamp_size", 1) # 0 : 16, 1 : 32, 2 : 48, 3: 64
 
         self.lock = asyncio.Lock()
         self.log.debug(f"Configuration:\n {json.dumps(config.get_dict(), indent=1)}")
@@ -589,7 +585,7 @@ class ASTEP(Satellite):
             errors = await self.boardDriver.getLayerWrongLength(i)
             self.log.info(f"Layer {i} stats: {idle} idle bytes, {frames} frames, {errors} errors")
 
-    @schedule_metric("Byte", MetricsType.LAST_VALUE, 5)
+    @schedule_metric("Byte", 5)
     def BUFFER_SIZE(self):
         if self.fsm.current_state_value == SatelliteState.RUN:
             if self.buffer_size_queue:
