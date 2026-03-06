@@ -46,7 +46,7 @@ class ASTEP(Satellite):
         if os.path.exists(self.outdir) == False:
             os.makedirs(self.outdir)
         # should be gecco or cmod
-        self.setup_type = config["setup_type"]
+        self.setup_type = config.get("setup_type")
         self.use_shift_register = config.get("use_shift_register", False)
         self.chips_per_row = config.get("chips_per_row", [1])
         self.autoread = config.get("autoread", True)
@@ -54,15 +54,27 @@ class ASTEP(Satellite):
         self.config_directory = config.get(
             "config_directory", f"{os.getcwd()}{os.path.sep}scripts{os.path.sep}config"
         )
-        self.chip_configs = config["chip_configs"]
+        self.chip_configs = config.get("chip_configs")
 
         self.find_chip_configs()
 
         self.nlayers = len(self.chip_configs)
 
-        self.chip_version = config["chip_version"]
-        self.injection_row = config.get("injection_row", None)
-        self.injection_col = config.get("injection_col", None)
+        self.chip_version = config.get("chip_version")
+        if "injection_row" in config:
+            self.injection_row = config.get("injection_row")
+            if isinstance(self.injection_row, int):
+                self.injection_row = [self.injection_row]
+        else:
+            self.injection_row = None
+
+        if "injection_col" in config:
+            self.injection_col = config.get("injection_col")
+            if isinstance(self.injection_col, int):
+                self.injection_col = [self.injection_col]
+        else:
+            self.injection_col = None
+
         self.injection_layer = config.get("injection_layer", 0)
         self.injection_chip = config.get("injection_chip", 0)
         self.inject = (
@@ -70,7 +82,10 @@ class ASTEP(Satellite):
             if self.injection_row is not None and self.injection_col is not None
             else False
         )
-        self.injection_voltage = config.get("injection_voltage", None)
+        if "injection_voltage" in config:
+            self.injection_voltage = config.get("injection_voltage")
+        else:
+            self.injection_voltage = None
         self.injection_period = config.get("injection_period", 100)
         self.injection_clkdiv = config.get("injection_clkdiv", 300)
         self.injection_initdelay = config.get("injection_initdelay", 100)
@@ -84,15 +99,22 @@ class ASTEP(Satellite):
         self.threshold_pmos = config.get("threshold_pmos", 1100)
         self.vminuspix = config.get("vminuspix", 1000)
 
-        self.spi_clkdiv = config.get("spi_clkdiv", 20)
         self.spi_freq = config.get("spi_freq", 1e6)
+        if "spi_clkdiv" in config:
+            self.spi_clkdiv = config.get("spi_clkdiv")
+            self.log.info(f'SPI clkdiv overrides spi frequency. It ({self.spi_clkdiv}) will be used to set the spi clock divider')
+            self.spi_freq = None
 
-        self.nbytes_to_read_out = config.get("nbytes_to_read_out", None)
+        if "nbytes_to_read_out" in config:
+            self.nbytes_to_read_out = config.get("nbytes_to_read_out")
+        else:
+            self.nbytes_to_read_out = None
+
         self.use_tlu = config.get("use_tlu", False)
         self.fpga_timestamp_size = config.get("fpga_timestamp_size", 1) # 0 : 16, 1 : 32, 2 : 48, 3: 64
 
         self.lock = asyncio.Lock()
-        self.log.debug(f"Configuration:\n {json.dumps(config.get_dict(), indent=1)}")
+        # self.log.debug(f"Configuration:\n {json.dumps(config.get_dict(), indent=1)}")
         self.open_board_driver()
         self.log.info(f"Board driver successfully opened")
         self.run_identifier = None
@@ -191,19 +213,24 @@ class ASTEP(Satellite):
     async def setup_injection(self):
         if self.inject:
             try:
-                self.boardDriver.asics[self.injection_layer].enable_inj_col(
-                    self.injection_chip, self.injection_col, inplace=False
-                )
-                self.boardDriver.asics[self.injection_layer].enable_inj_row(
-                    self.injection_chip, self.injection_row, inplace=False
-                )
-
-                self.boardDriver.asics[self.injection_layer].enable_pixel(
-                    chip=self.injection_chip,
-                    col=self.injection_col,
-                    row=self.injection_row,
-                    inplace=False,
-                )
+                for col in self.injection_col:
+                    self.log.info(f'Enabling injection column {col}')
+                    self.boardDriver.asics[self.injection_layer].enable_inj_col(
+                        self.injection_chip, col, inplace=False
+                    )
+                for row in self.injection_row:
+                    self.log.info(f'Enabling injection row {row}')
+                    self.boardDriver.asics[self.injection_layer].enable_inj_row(
+                        self.injection_chip, row, inplace=False
+                    )
+                for col in self.injection_col:
+                    for row in self.injection_row:
+                        self.boardDriver.asics[self.injection_layer].enable_pixel(
+                            chip=self.injection_chip,
+                            col=col,
+                            row=row,
+                            inplace=False,
+                        )
                 # Priority to command line, defaults to yaml - already in vdac units
                 if self.injection_voltage is not None:
                     self.boardDriver.asics[self.injection_layer].asic_config[
@@ -344,7 +371,13 @@ class ASTEP(Satellite):
         currentTS = await self.boardDriver.rfg.read_layers_fpga_timestamp_counter()
         self.log.info(f'FPGA TS = {currentTS}')
         #await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush=True)
-        await self.boardDriver.configureLayerSPIFrequency(self.spi_freq, flush=True)
+        if self.spi_freq is None:
+            self.log.info(f'Setting SPI clock divider to {self.spi_clkdiv}')
+            await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush=True)
+        else:
+            self.log.info(f'Setting SPI frequency divider to {self.spi_freq}')
+            await self.boardDriver.configureLayerSPIFrequency(self.spi_freq, flush=True)
+
         await self.boardDriver.rfg.write_layers_cfg_nodata_continue(value=8, flush=True)
 
     @async_run
@@ -463,6 +496,8 @@ class ASTEP(Satellite):
         # injection parameters
 
         call_setup_injection = False
+        prev_injection_row = self.injection_row.copy()
+        prev_injection_col = self.injection_col.copy()
         if "injection_row" in partial_config.get_keys():
             self.injection_row = partial_config["injection_row"]
             call_setup_injection = True
@@ -512,11 +547,13 @@ class ASTEP(Satellite):
         if call_setup_injection or call_setup_clocks or call_setup_asics:
             # if injection was going on previously and the chip was not reconfigured, we need to disable the pixel that we were injecting into
             if self.inject and not call_setup_asics:
-                self.boardDriver.asics[self.injection_layer].disable_pixel(
-                    row=self.injection_row,
-                    col=self.injection_col,
-                    chip=self.injection_chip,
-                )
+                for col in prev_injection_col:
+                    for row in prev_injection_row:
+                        self.boardDriver.asics[self.injection_layer].disable_pixel(
+                            row=row,
+                            col=col,
+                            chip=self.injection_chip,
+                        )
             self.inject = (
                 True
                 if self.injection_row is not None and self.injection_col is not None

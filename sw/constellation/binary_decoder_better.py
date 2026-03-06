@@ -64,7 +64,7 @@ class Stats:
     def get_time_string(self, timestamp1, timestamp2):
         if timestamp1 is None or timestamp2 is None:
             return None
-        seconds = np.max([timestamp1, timestamp2]) - np.min([timestamp1, timestamp2])
+        seconds = np.max([timestamp1, timestamp2]) - np.min([timestamp1, timestamp2])/1e9
         if seconds < 1:
             return f'{round(seconds, 3)} s'
         seconds = round(seconds)
@@ -101,7 +101,7 @@ class Stats:
 
         print(f'First FPGA timestamp is {self.first_timestamp} ns')
         print(f'Last FPGA timestamp is {self.last_timestamp} ns')
-        print(f'The decoded part approximately corresponds to {self.get_time_string(self.last_timestamp/1e9, self.first_timestamp/1e9)} of run time')
+        print(f'The decoded part approximately corresponds to {self.get_time_string(self.last_timestamp, self.first_timestamp)} of run time')
 
 class Decoder:
     #I did not add the code for split hits at the endges of the readout blocks. Will add in the future if necessary
@@ -120,7 +120,7 @@ class Decoder:
         self.nchips_per_layer = nchips_per_layer
         self.count_skipped_bytes = 0
         self.count_total_bytes = 0
-        self.root_file = None 
+        self.root_file = None
         self.h5_file = None
         self.stats = Stats(self.chip_version, self.fpga_ts_length)
         self.halfhit_deque = deque(maxlen=1)
@@ -208,9 +208,9 @@ class Decoder:
             else:
                 self.h5_filename[suffix] = '.'.join(parts[:-1]) + '_' + suffix + '.' + parts[-1]
             self.h5_file[suffix] =  h5py.File(self.h5_filename[suffix], 'w')
-            self.h5_dataset[suffix] = self.h5_file[suffix].create_dataset("Hits",  
-                                                                    shape=(0, ), 
-                                                                    maxshape=(None, ), 
+            self.h5_dataset[suffix] = self.h5_file[suffix].create_dataset("Hits",
+                                                                    shape=(0, ),
+                                                                    maxshape=(None, ),
                                                                     chunks=True,
                                                                     dtype=HIT_TYPE
                                                                     )
@@ -229,7 +229,7 @@ class Decoder:
             else:
                 print(f'Provided FPGA timestamp length {self.fpga_ts_length} bytes')
             print(f'{self.count_skipped_bytes} bytes skipped while decoding out of {self.count_total_bytes} bytes of data ({self.count_skipped_bytes/self.count_total_bytes*100}%)')
-            
+
 
         if '.root' in filename:
             self.write_hits_to_root_file(filename)
@@ -350,12 +350,13 @@ class Decoder:
                 self.h5_dataset[suffix][current_rows:] = data
                 self.h5_file[suffix].flush()
 
-        if self.stats.first_timestamp is None:
+        if self.stats.first_timestamp is None and len(self.hits) > 0:
             self.stats.first_timestamp = self.hits[0].fpga_ts / self.fpga_ts_clock_freq * 1e9
-        self.stats.last_timestamp = self.hits[-1].fpga_ts / self.fpga_ts_clock_freq * 1e9
+        if len(self.hits) > 0:
+            self.stats.last_timestamp = self.hits[-1].fpga_ts / self.fpga_ts_clock_freq * 1e9
         self.stats.hit_count += len(self.hits)
         self.stats.row_halfhit_count += len([1 for hh in self.halfhits if not hh.isCol])
-        self.stats.col_halfhit_count += len([1 for hh in self.halfhits if hh.isCol]) 
+        self.stats.col_halfhit_count += len([1 for hh in self.halfhits if hh.isCol])
         self.hits.clear()
         self.halfhits.clear()
 
@@ -390,7 +391,7 @@ class Decoder:
                         self.hits += matcher.hits
 
                     if len(self.halfhits) > 1e6:
-                        self.write_hits()     
+                        self.write_hits()
                 elif self.chip_version == 4:
                     self.hits += decoded_packets
 
@@ -406,7 +407,8 @@ class Decoder:
                     break
         except KeyboardInterrupt:
             pass
-        self.halfhit_deque.popleft()
+        if len(self.halfhit_deque) != 0:
+            self.halfhit_deque.popleft()
         if len(self.halfhit_deque) != 0:
             matcher = Matcher(self.halfhit_deque, block_to_use=0)
             matcher.match(strategy='all_all')
@@ -415,10 +417,11 @@ class Decoder:
         if self.root_file is not None:
             self.root_file.close()
             print(f'Wrote data to the .root file {self.root_filename}')
-        for suffix in self.h5_file:
-            if self.h5_file[suffix] is not None:
-                self.h5_file[suffix].close()
-                print(f'Wrote data to the .h5 file {self.h5_filename[suffix]}')
+        if self.h5_file is not None:
+            for suffix in self.h5_file:
+                if self.h5_file[suffix] is not None:
+                    self.h5_file[suffix].close()
+                    print(f'Wrote data to the .h5 file {self.h5_filename[suffix]}')
         if self.verbose:
             print(f'{readout_id} readout blocks read in total')
             self.stats.print()
