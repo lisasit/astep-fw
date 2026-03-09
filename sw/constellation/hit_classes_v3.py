@@ -1,0 +1,46 @@
+from dataclasses import dataclass
+
+import numpy as np
+
+@dataclass
+class HalfHit_v3:
+    packet_length: int
+    layer: int
+    chip_id: int
+    payload: int
+    is_col: bool
+    location: int
+    timestamp: int
+    tot: int
+    fpga_ts: int
+    index: int
+    readout_id: int
+
+
+@dataclass
+class MatchedHit_v3:
+    row: int
+    col: int
+    fpga_ts_row: int
+    fpga_ts_col: int
+    tot_row: int
+    tot_col: int
+    index_row: int
+    index_col: int
+
+
+@dataclass
+class Hit_v3:
+    row: int
+    col: int
+    fpga_ts: int
+    tot: int
+
+HIT_TYPE = np.dtype([
+        ('column', 'i4'),
+        ('row', 'i4'),
+        ('raw', 'i4'),
+        ('charge', 'd'),
+        ('timestamp', 'd'),
+        ('trigger_number', 'u4')
+    ])
