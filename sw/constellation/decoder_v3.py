@@ -122,7 +122,7 @@ class Decoder:
             if self.check_packet(packet):
                 result_packets.append(packet)
                 i += packet_length + 1
-            elif i + packet_length + 1 >= len(byte_block):
+            elif i + packet_length + 1 >= len(new_byte_block):
                 self.leftovers = packet
                 break
             else:

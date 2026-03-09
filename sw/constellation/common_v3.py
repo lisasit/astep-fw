@@ -48,7 +48,7 @@ class Stats:
     def get_time_string(self, timestamp1, timestamp2):
         if timestamp1 is None or timestamp2 is None:
             return None
-        seconds = max([timestamp1, timestamp2]) - min([timestamp1, timestamp2])
+        seconds = (max([timestamp1, timestamp2]) - min([timestamp1, timestamp2])) / 1e9
         if seconds < 1:
             return f'{round(seconds, 3)} s'
         seconds = round(seconds)
@@ -68,4 +68,4 @@ class Stats:
         assert self.first_fpga_timestamp and self.last_fpga_timestamp
         print(f'First FPGA timestamp is {self.first_fpga_timestamp:.0f} ns')
         print(f'Last FPGA timestamp is {self.last_fpga_timestamp:.0f} ns')
-        print(f'The decoded part approximately corresponds to {self.get_time_string(self.last_fpga_timestamp/1e9, self.first_fpga_timestamp/1e9)} of run time')
+        print(f'The decoded part approximately corresponds to {self.get_time_string(self.last_fpga_timestamp, self.first_fpga_timestamp)} of run time')
