@@ -1,60 +1,55 @@
-from collections import deque
+from decoder_base import DecoderBase
+from pathlib import Path
 
-import h5py
-import numpy as np
-
-from .hit_classes_v3 import HalfHit_v3, Hit_v3, HIT_TYPE
-from .matcher_v3 import Matcher
-from .common_v3 import Stats, DecoderSettings
-
-
-class Decoder:
+class Decoder_v3(DecoderBase):
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
-        self.bin_file = open(bin_filename, 'rb')
+        super().__init__(bin_filename, stats, decoder_settings)
 
-        self.decoder_settings = decoder_settings
-        self.stats = stats
+        # h5 files for saving the halfhit data as if we had two separate strip detectors
+        self.h5_strip_files = {}
+        self.h5_strip_datasets = {}
 
-        # Counters
-        self.last_readout_id = 0
+        # Index of the last halfhit
         self.last_hh_index = 0
-
-        # Leftover bytes from package splitting
-        self.leftovers = bytes()
-
-        # Last FPGA timestamp for filtering
-        self.last_good_fpga_ts = 0
 
         # Halfhit matching deque
         self.hh_to_match: deque[HalfHit_v3] = deque()
 
         # Matched hits
         self.hits: list[Hit_v3] = []
+        # Halfhits
+        self.halfhits: list[HalfHit_v3] = []
 
         self.matcher = Matcher(self.hh_to_match, stats, self.decoder_settings)
 
-        self.h5_file: h5py.File | None = None
-        self.h5_dataset: h5py.Dataset | None = None
+    def decode(self) -> None:
+        hh_to_fill: deque[HalfHit_v3] = deque()
 
-    def decode(self):
-        hh_to_fill = self.read_all_hhs()
-
-        print("Starting filling deque")
-
+        # loop for decoding everything
         while True:
-            # Fill halfhits into matching deque
-            while hh_to_fill:
-                hh = hh_to_fill[0]
+            # loop for filling hh_to_match once
+            while True:
+                # read and decode a block
+                if not hh_to_fill:
+                    hh_to_fill = self.read_and_decode_next_block()
+                    # check if we ran out of blocks in the binary file
+                    if not hh_to_fill:
+                        break
+                # Check if the hh_to_match needs to be filled
+                hh_to_match_full = False
+                while hh_to_fill:
+                    hh = hh_to_fill[0]
+                    if self.hh_to_match and float(hh_.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
+                            print(f"Stop filling ({float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq} > {self.decoder_settings.fpga_ts_matching_limit})")
+                            hh_to_match_full = True
+                            break
+                    print(f"Add {'col' if hh.is_col else 'row'} hh {hh.index} with loc {hh.location:02d}, fpga ts {hh.fpga_ts}, chip ts {hh.timestamp:03d}, tot {hh.tot:04d}")
 
-                # Check if halfhit is within matching limit
-                if self.hh_to_match and float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
-                    print(f"Stop filling ({float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq} > {self.decoder_settings.fpga_ts_matching_limit})")
+                    # Move halfthit to matching deque and to internal list of all halfhits 
+                    self.halfhits.append(hh_to_fill[0])
+                    self.hh_to_match.append(hh_to_fill.popleft())
+                if hh_to_match_full:
                     break
-
-                print(f"Add {'col' if hh.is_col else 'row'} hh {hh.index} with loc {hh.location:02d}, fpga ts {hh.fpga_ts}, chip ts {hh.timestamp:03d}, tot {hh.tot:04d}")
-
-                # Move halfthit to matching deque
-                self.hh_to_match.append(hh_to_fill.popleft())
 
             # Check if any halfhits are left for matching
             if not hh_to_fill and not self.hh_to_match:
@@ -72,80 +67,71 @@ class Decoder:
 
         self.write_hits()
 
-    def read_all_hhs(self) -> deque[HalfHit_v3]:
-        hh_to_fill: deque[HalfHit_v3] = deque()
+    def read_and_decode_next_block(self):
+        result: deque[HalfHit_v3] = deque()
+        block = self.read_block()
 
-        print("Reading all halfhits from file")
+        if block is None:
+            return result
 
-        while True:
-            # Get binary readout block
-            block = self.read_block()
+        self.last_readout_id += 1
 
-            if block is None:
-                break
+        # Split block into packets
+        packets = self.split_packets(block)
 
-            self.last_readout_id += 1
+        # Decode packets
+        decoded_packets = [self.decode_packet(packet) for packet in packets]
 
-            # Split block into packets
-            packets = self.split_packets(block)
+        # Filter broken packets
+        for decoded_packet in decoded_packets:
+            if decoded_packet is not None:
+                self.stats.hh_count += 1
+                self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
+                if self.check_hh(decoded_packet):
+                    hh_to_fill.append(decoded_packet)
+        return result
 
-            # Decode packets
-            decoded_packets = [self.decode_packet(packet) for packet in packets]
-
-            # Filter broken packets
-            for decoded_packet in decoded_packets:
-                if decoded_packet is not None:
-                    self.stats.hh_count += 1
-                    self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
-                    if self.check_hh(decoded_packet):
-                        hh_to_fill.append(decoded_packet)
-
-        return hh_to_fill
-
-    def read_block(self) -> bytes | None:
-        read_int = self.bin_file.read(2)
-        if len(read_int) == 0:
-            return None
-        nbits = int.from_bytes(read_int, 'little')
-        result_block = self.bin_file.read(nbits)
-        self.stats.total_byte_count += len(result_block)
-        return result_block
-
-    def split_packets(self, byte_block: bytes) -> list[bytes]:
-        result_packets: list[bytes] = []
-        i = 0
-        new_byte_block = self.leftovers + byte_block
-        self.leftovers = bytes()
-        while i < len(new_byte_block):
-            packet_length = int(new_byte_block[i])
-            packet = new_byte_block[i:i+packet_length+1]
-            if self.check_packet(packet):
-                result_packets.append(packet)
-                i += packet_length + 1
-            elif i + packet_length + 1 >= len(new_byte_block):
-                self.leftovers = packet
-                break
-            else:
-                self.stats.skipped_byte_count += 1
-                i += 1
-        return result_packets
+    def check_hh(self, hh: HalfHit_v3) -> bool:
+        if hh.fpga_ts == 0:
+            self.stats.filtered_hh_count += 1
+            self.stats.filtered_hh_row_count += 0 if hh.is_col else 1
+            self.stats.zero_ts_hh_count += 1
+            return False
+        if hh.fpga_ts < self.last_good_fpga_ts:
+            self.stats.filtered_hh_count += 1
+            self.stats.filtered_hh_row_count += 0 if hh.is_col else 1
+            return False
+        if abs(hh.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_hh_filter_limit:
+            self.stats.filtered_hh_count += 1
+            self.stats.filtered_hh_row_count += 0 if hh.is_col else 1
+            return False
+        self.last_good_fpga_ts = hh.fpga_ts
+        return True
 
     def check_packet(self, packet: bytes) -> bool:
         if len(packet) - 1 != int(packet[0]):
             return False
         if len(packet) - 7 != self.decoder_settings.fpga_ts_length:
             return False
+
+        # Numbering starts with 1
         layer = int(packet[1])
+        if layer > self.decoder_settings.nlayers:
+            return False
+
         # byte 2 is a header. 3 bit payload, 5 bit chip id
         byte = int(packet[2])
         chip_id = byte >> 3
         payload = byte & 0b00000111
-        if layer > self.decoder_settings.nlayers:
-            return False
+        
+        # Numbering starts with 0
         if chip_id >= self.decoder_settings.nchips_per_layer:
             return False
+
+        # For v3 payload is always 4
         if payload != 4:
             return False
+
         return True
 
     def decode_packet(self, packet: bytes) -> HalfHit_v3 | None:
@@ -182,47 +168,62 @@ class Decoder:
         # constructing ToT total
         tot_total = (tot_msb << 8) + tot_lsb
 
-        return HalfHit_v3(packet_length, layer, chip_id, payload, is_col, location, timestamp, tot_total, fpga_ts, self.last_hh_index, self.last_readout_id)
+        return HalfHit_v3(packet_length, layer, chip_id, payload, is_col, location, timestamp, tot_total, tot_total*self.decoder_settings.sample_clock_period_ns, fpga_ts, self.last_hh_index, self.last_readout_id)
 
-    def check_hh(self, hh: HalfHit_v3) -> bool:
-        if hh.fpga_ts == 0:
-            self.stats.filtered_hh_count += 1
-            self.stats.filtered_hh_row_count += 0 if hh.is_col else 1
-            self.stats.zero_ts_hh_count += 1
-            return False
-        if hh.fpga_ts < self.last_good_fpga_ts:
-            self.stats.filtered_hh_count += 1
-            self.stats.filtered_hh_row_count += 0 if hh.is_col else 1
-            # TODO stats
-            return False
-        if abs(hh.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_hh_filter_limit:
-            self.stats.filtered_hh_count += 1
-            self.stats.filtered_hh_row_count += 0 if hh.is_col else 1
-            return False
-        self.last_good_fpga_ts = hh.fpga_ts
-        return True
+    def prepare_h5_file(self, filename) -> None:
+        super().prepare_h5_file(filename)
+        filename_path = Path(filename)
 
-    def prepare_h5_file(self, filename: str) -> None:
-        self.h5_file = h5py.File(filename, 'w')
-        self.h5_dataset = self.h5_file.create_dataset(
-            "Hits",
-            shape=(0, ),
-            maxshape=(None, ),
-            chunks=True,
-            dtype=HIT_TYPE,
-        )
+        for hh_type in ['row', 'col']:
+            self.h5_strip_files[hh_type] = h5py.File(f"{filename_path.stem}_{hh_type}{filename_path.suffix}")
+            self.h5_strip_datasets[hh_type] = self.h5_file[suffix].create_dataset("Hits",
+                                                                    shape=(0, ),
+                                                                    maxshape=(None, ),
+                                                                    chunks=True,
+                                                                    dtype=HIT_TYPE
+                                                                    )
 
-    def write_hits(self) -> None:
-        if self.h5_file is not None:
-            assert self.h5_dataset
-            current_rows = self.h5_dataset.shape[0]
-            self.h5_dataset.resize((current_rows + len(self.hits), ))
-            self.h5_dataset[current_rows:] = np.array(
-                [(hit.col, hit.row, hit.tot, hit.tot * 25e-4, float(hit.fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits], dtype=HIT_TYPE
-            )
-            self.h5_file.flush()
+    def prepare_root_file(self, filename) -> None:
+        super().prepare_root_file(filename)
+        self.root_file.mktree('hits', {key : [] for key in Hit_v3().__dict__})
+        self.root_file.mktree('halfhits', {key : [] for key in HalfHit_v3().__dict__})
 
-        if self.stats.first_fpga_timestamp is None:
-            self.stats.first_fpga_timestamp = float(self.hits[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9
-        self.stats.last_fpga_timestamp = self.hits[-1].fpga_ts / self.decoder_settings.fpga_ts_clock_freq * 1e9
-        self.hits.clear()
+    def write_hits(self):
+        super().write_hits()
+
+        # if writing strip files for halfhits
+        if self.h5_file is not None and self.decoder_settings.write_strip_files:
+            def is_right_hh(hh, hh_type):
+                if hh_type == 'row':
+                    return not hh.is_col 
+                return hh.is_col
+            def make_right_list(hh, hh_type):
+                result = [0, 0, hh.tot_raw, hh.tot_us, float(hit.fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9, 0]
+                if hh_type == 'row':
+                    result[1] = hh.location
+                else:
+                    result[0] = hh.location
+                return result
+            for hh_type in ['row', 'col']:
+                assert self.h5_strip_datasets[hh_type]
+                current_rows = self.h5_strip_datasets[hh_type].shape[0]
+                correct_hh = [hh for hh in self.halfhits if is_right_hh(hh, hh_type)]
+                self.h5_strip_datasets[hh_type].resize((current_rows + len(correct_hh), ))
+                self.h5_strip_datasets[hh_type][current_rows:] = np.array(
+                    [make_right_list(hh, hh_type) for hh in correct_hh], dtype=HIT_TYPE
+                )
+                self.h5_strip_files[h_type].flush()
+
+        # if writing into a root file
+        if self.root_file is not None:
+            hit_dict = {key : [getattr(hit, key) for hit in self.hits] for key in Hit_v3().__dict__}
+            halfhit_dict = {key : [getattr(hh, key) for hh in self.halfhits] for key in HalfHit_v3().__dict__}
+            self.root_file['hits'].extend(hit_dict)
+            self.root_file['halfhits'].extend(halfhit_dict)
+
+    
+
+    
+
+
+

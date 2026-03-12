@@ -29,6 +29,10 @@ class DecoderSettings:
     matcher_ts_limit: int
     # Maximum relative ToT deviation for matching
     matcher_tot_limit: float
+    # Flag to save h5 files for row and column halfhits separately
+    write_strip_files: bool = False
+    # Period of sample clock in ns. Default is 25 ns
+    sample_clock_period_ns = 25
 
 
 @dataclass
