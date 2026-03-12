@@ -1,5 +1,8 @@
+from __future__ import annotations
 from decoder_base import DecoderBase
 from pathlib import Path
+from constellation.common import Stats, DecoderSettings
+from constellation.hit_classes import HalfHit_v3, Hit_v3
 
 class Decoder_v3(DecoderBase):
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):

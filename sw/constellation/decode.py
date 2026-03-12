@@ -31,7 +31,7 @@ def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchip
             nchips_per_layer=nchips_per_layer,
             fpga_ts_length=fpga_ts_length,
             fpga_ts_clock_freq=80e6,
-            hh_filter_limit = 100000 # 100ks aka ~28h
+            hh_filter_limit = 100000, # 100ks aka ~28h
             hh_matching_limt=3e-3, # 3ms
             strategy=MatcherStrategy.ALL,
             ts_limit=2, # clk cycles
