@@ -1,7 +1,10 @@
 from common import Stats, DecoderSettings
 from hit_classes import HIT_TYPE
-
-
+import os
+import uproot
+import yaml
+import h5py
+import numpy as np
 
 class DecoderBase:
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
@@ -25,6 +28,7 @@ class DecoderBase:
 
         self.root_file: uproot.File | None = None
 
+        self.verbose = True
         self.find_configs(bin_filename=bin_filename)
 
     def flatten(self, to_flatten):
@@ -73,8 +77,8 @@ class DecoderBase:
                     print(f'.{file_extension} config found: {fitting_files[0]}')
                 return bin_directory + '/' + fitting_files[0]
 
-        self.constellation_config = find_fitting_file('toml')
-        self.chip_config = find_fitting_file('yml')
+        self.constellation_config_filename = find_fitting_file('toml')
+        self.chip_config_filenames = [find_fitting_file('yml')]
 
 
     def read_configs(self):
@@ -107,10 +111,17 @@ class DecoderBase:
         self.root_file = uproot.recreate(filename)
         self.read_configs()
         if self.constellation_config is not None:
-            root_file['constellation_config'] = prepare_dict_for_root(self.constellation_config)
+            self.root_file['constellation_config'] = self.prepare_dict_for_root(self.constellation_config)
 
         if self.chip_config is not None:
-            root_file['chip_config'] = prepare_dict_for_root(self.chip_config)
+            self.root_file['chip_config'] = self.prepare_dict_for_root(self.chip_config)
+
+    def close_files(self):
+        if self.root_file is not None:
+            self.root_file.close()
+
+        if self.h5_file_hits is not None:
+            self.h5_file_hits.close()
 
     def read_block(self):
         read_int = self.bin_file.read(2)
@@ -148,7 +159,7 @@ class DecoderBase:
             self.h5_dataset_hits[current_rows:] = np.array(
                 [(hit.col, hit.row, hit.tot_raw, hit.tot_us, float(hit.fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits], dtype=HIT_TYPE
             )
-            self.h5_file.flush()
+            self.h5_file_hits.flush()
 
         if self.stats.first_fpga_timestamp is None:
             self.stats.first_fpga_timestamp = float(self.hits[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9

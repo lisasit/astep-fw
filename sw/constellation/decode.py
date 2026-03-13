@@ -31,11 +31,11 @@ def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchip
             nchips_per_layer=nchips_per_layer,
             fpga_ts_length=fpga_ts_length,
             fpga_ts_clock_freq=80e6,
-            hh_filter_limit = 100000, # 100ks aka ~28h
-            hh_matching_limt=3e-3, # 3ms
-            strategy=MatcherStrategy.ALL,
-            ts_limit=2, # clk cycles
-            tot_limit=0.2 # 20%
+            fpga_ts_hh_filter_limit = 100000, # 100ks aka ~28h
+            fpga_ts_matching_limit=3e-3, # 3ms
+            matcher_strategy=MatcherStrategy.ALL,
+            matcher_ts_limit=2, # clk cycles
+            matcher_tot_limit=0.2 # 20%
         )
         d = Decoder_v3(filename, stats, decoder_settings)
     else:
@@ -49,8 +49,6 @@ def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchip
     #     d.write_hits_to_file(name_output.replace('.bin', file_extension))
 
 def main(args):
-    if args.max_nreadouts is not None:
-        args.max_nreadouts = int(args.max_nreadouts)
     if args.name is None and args.dir is None:
         print('No -n and no -d arguments passed, nothing to decode')
         return
@@ -89,9 +87,9 @@ if __name__ == "__main__":
     parser.add_argument('-h5', '--h5', required=False, default=False, action="store_true", help='Write the decoded output into an h5 file')
     parser.add_argument('-root', '--root', required=False, default=False, action="store_true", help='Write the decoded output into a root file')
     parser.add_argument('-v', '--version', required=True, help='Chip version', type=int)
-    parser.add_argument('--fpga_ts_length', required=False, help='Length of the FPGA imestamp in bytes', type=int, default=None)
-    parser.add_argument('--nchips_per_layer', required=False, help='Number of chips per layer', type=int, default=None)
-    parser.add_argument('--nlayers', required=False, help='Number of layers', type=int, default=None)
+    parser.add_argument('--fpga_ts_length', required=False, help='Length of the FPGA imestamp in bytes', type=int, default=8)
+    parser.add_argument('--nchips_per_layer', required=False, help='Number of chips per layer', type=int, default=1)
+    parser.add_argument('--nlayers', required=False, help='Number of layers', type=int, default=1)
     parser.add_argument('-o', '--outdir', required=False, help='Directory for the output file', default=None)
 
     args = parser.parse_args()

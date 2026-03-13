@@ -2,7 +2,11 @@ from __future__ import annotations
 from decoder_base import DecoderBase
 from pathlib import Path
 from constellation.common import Stats, DecoderSettings
-from constellation.hit_classes import HalfHit_v3, Hit_v3
+from constellation.hit_classes import HalfHit_v3, Hit_v3, HIT_TYPE
+from constellation.matcher_v3 import Matcher
+from collections import deque
+from dataclasses import fields
+import h5py
 
 class Decoder_v3(DecoderBase):
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
@@ -27,7 +31,6 @@ class Decoder_v3(DecoderBase):
 
     def decode(self) -> None:
         hh_to_fill: deque[HalfHit_v3] = deque()
-
         # loop for decoding everything
         while True:
             # loop for filling hh_to_match once
@@ -36,17 +39,17 @@ class Decoder_v3(DecoderBase):
                 if not hh_to_fill:
                     hh_to_fill = self.read_and_decode_next_block()
                     # check if we ran out of blocks in the binary file
-                    if not hh_to_fill:
+                    if hh_to_fill is None:
                         break
                 # Check if the hh_to_match needs to be filled
                 hh_to_match_full = False
                 while hh_to_fill:
                     hh = hh_to_fill[0]
-                    if self.hh_to_match and float(hh_.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
-                            print(f"Stop filling ({float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq} > {self.decoder_settings.fpga_ts_matching_limit})")
+                    if self.hh_to_match and float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
+                            #print(f"Stop filling ({float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq} > {self.decoder_settings.fpga_ts_matching_limit})")
                             hh_to_match_full = True
                             break
-                    print(f"Add {'col' if hh.is_col else 'row'} hh {hh.index} with loc {hh.location:02d}, fpga ts {hh.fpga_ts}, chip ts {hh.timestamp:03d}, tot {hh.tot:04d}")
+                    #print(f"Add {'col' if hh.is_col else 'row'} hh {hh.index} with loc {hh.location:02d}, fpga ts {hh.fpga_ts}, chip ts {hh.timestamp:03d}, tot {hh.tot_raw:04d}")
 
                     # Move halfthit to matching deque and to internal list of all halfhits 
                     self.halfhits.append(hh_to_fill[0])
@@ -69,15 +72,18 @@ class Decoder_v3(DecoderBase):
                 self.write_hits()
 
         self.write_hits()
+        self.close_files()
 
     def read_and_decode_next_block(self):
         result: deque[HalfHit_v3] = deque()
         block = self.read_block()
 
         if block is None:
-            return result
+            return None
 
         self.last_readout_id += 1
+        if self.verbose and self.last_readout_id % 1000 == 0:
+            print(f'Read {self.last_readout_id} blocks')
 
         # Split block into packets
         packets = self.split_packets(block)
@@ -91,7 +97,7 @@ class Decoder_v3(DecoderBase):
                 self.stats.hh_count += 1
                 self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
                 if self.check_hh(decoded_packet):
-                    hh_to_fill.append(decoded_packet)
+                    result.append(decoded_packet)
         return result
 
     def check_hh(self, hh: HalfHit_v3) -> bool:
@@ -178,8 +184,8 @@ class Decoder_v3(DecoderBase):
         filename_path = Path(filename)
 
         for hh_type in ['row', 'col']:
-            self.h5_strip_files[hh_type] = h5py.File(f"{filename_path.stem}_{hh_type}{filename_path.suffix}")
-            self.h5_strip_datasets[hh_type] = self.h5_file[suffix].create_dataset("Hits",
+            self.h5_strip_files[hh_type] = h5py.File(f"{filename_path.parent}/{filename_path.stem}_{hh_type}{filename_path.suffix}", "w")
+            self.h5_strip_datasets[hh_type] = self.h5_strip_files[hh_type].create_dataset("Hits",
                                                                     shape=(0, ),
                                                                     maxshape=(None, ),
                                                                     chunks=True,
@@ -188,14 +194,18 @@ class Decoder_v3(DecoderBase):
 
     def prepare_root_file(self, filename) -> None:
         super().prepare_root_file(filename)
-        self.root_file.mktree('hits', {key : [] for key in Hit_v3().__dict__})
-        self.root_file.mktree('halfhits', {key : [] for key in HalfHit_v3().__dict__})
+        self.root_file.mktree('hits', {field.name : [] for field in fields(Hit_v3)})
+        self.root_file.mktree('halfhits', {field.name : [] for field in fields(HalfHit_v3)})
+
+    def close_files(self):
+        super().close_files()
+        for hh_type in self.h5_strip_files:
+            self.h5_strip_files[hh_type].close()
+
 
     def write_hits(self):
-        super().write_hits()
-
         # if writing strip files for halfhits
-        if self.h5_file is not None and self.decoder_settings.write_strip_files:
+        if self.h5_file_hits is not None and self.decoder_settings.write_strip_files:
             def is_right_hh(hh, hh_type):
                 if hh_type == 'row':
                     return not hh.is_col 
@@ -219,10 +229,12 @@ class Decoder_v3(DecoderBase):
 
         # if writing into a root file
         if self.root_file is not None:
-            hit_dict = {key : [getattr(hit, key) for hit in self.hits] for key in Hit_v3().__dict__}
-            halfhit_dict = {key : [getattr(hh, key) for hh in self.halfhits] for key in HalfHit_v3().__dict__}
+            hit_dict = {field.name : [getattr(hit, field.name) for hit in self.hits] for field in fields(Hit_v3)}
+            halfhit_dict = {field.name : [getattr(hh, field.name) for hh in self.halfhits] for field in fields(HalfHit_v3)}
             self.root_file['hits'].extend(hit_dict)
             self.root_file['halfhits'].extend(halfhit_dict)
+        super().write_hits()
+        self.halfhits.clear()
 
     
 
