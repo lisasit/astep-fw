@@ -48,10 +48,8 @@ class Decoder_v3(DecoderBase):
             while self.hh_to_fill:
                 hh = self.hh_to_fill[0]
                 if self.hh_to_match and float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
-                        #print(f"Stop filling ({float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq} > {self.decoder_settings.fpga_ts_matching_limit})")
                         hh_to_match_full = True
                         break
-                #print(f"Add {'col' if hh.is_col else 'row'} hh {hh.index} with loc {hh.location:02d}, fpga ts {hh.fpga_ts}, chip ts {hh.timestamp:03d}, tot {hh.tot_raw:04d}")
 
                 # Move halfthit to matching deque and to internal list of all halfhits 
                 self.halfhits.append(self.hh_to_fill[0])
@@ -61,7 +59,6 @@ class Decoder_v3(DecoderBase):
 
         # Check if any halfhits are left for matching
         if not self.hh_to_fill and not self.hh_to_match:
-            #print("Nothing left to match, leaving")
             return False
 
         # Match hits

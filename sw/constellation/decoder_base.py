@@ -177,15 +177,9 @@ class DecoderBase:
 
     def read_block(self):
         if self.decoder_settings.max_readout_blocks is not None and self.last_readout_id >= self.decoder_settings.max_readout_blocks:
-            self.update_progress_bar()
             self.pbar.close()
             print(f'Interrupting readout, because max block number has been read ({self.last_readout_id})')
-            # saying to the progress bar to go to 100% regardless of the size of the last block and if it fits our estimation
             return None
-
-        #if self.decoder_settings.print_block_stats_freq is not None and self.last_readout_id % self.decoder_settings.print_block_stats_freq == 0:
-         #   print(f'Read {self.last_readout_id} blocks, average block size is {np.mean(self.stats.block_lengths_current)}')
-          #  self.stats.block_lengths_current.clear()
 
         read_int = self.bin_file.read(2)
         if len(read_int) == 0:
