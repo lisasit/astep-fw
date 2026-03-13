@@ -87,7 +87,14 @@ class Stats:
         print(f'{self.hit_count} hits')
         print(f'ratio of hits to halfhits = {self.hit_count/self.hh_count if self.hh_count != 0 else np.inf}')
         print(f'{self.hh_wo_match_count} halfhits had no match ({round(self.hh_wo_match_count/self.hh_count*100, 0) if self.hh_count != 0 else np.inf}%)')
-        assert self.first_fpga_timestamp and self.last_fpga_timestamp
-        print(f'First FPGA timestamp is {self.first_fpga_timestamp:.0f} ns')
-        print(f'Last FPGA timestamp is {self.last_fpga_timestamp:.0f} ns')
-        print(f'The decoded part approximately corresponds to {self.get_time_string(self.last_fpga_timestamp, self.first_fpga_timestamp)} of run time')
+        if self.first_fpga_timestamp:
+            print(f'First FPGA timestamp is {self.first_fpga_timestamp:.0f} ns')
+        else:
+            print(f'First FPGA timestamp is unknown')
+
+        if self.last_fpga_timestamp:
+            print(f'Last FPGA timestamp is {self.last_fpga_timestamp:.0f} ns')
+        else:
+            print(f'Last FPGA timestamp is unknown')
+        if self.first_fpga_timestamp and self.last_fpga_timestamp:
+            print(f'The decoded part approximately corresponds to {self.get_time_string(self.last_fpga_timestamp, self.first_fpga_timestamp)} of run time')
