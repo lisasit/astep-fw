@@ -77,7 +77,7 @@ class Stats:
 
     def print(self):
         print(f'{self.skipped_byte_count} bytes skipped while decoding out of {self.total_byte_count} bytes of data ({round(self.skipped_byte_count/self.total_byte_count*100, 2) if self.total_byte_count != 0 else np.inf}%)')
-        print(f'Average size of a readout block is {np.mean(self.block_lengths)}')
+        print(f'Average size of a readout block is {np.mean(self.block_lengths_total)}')
         print(f'{self.hh_count} halfhits')
         hh_col_count = self.hh_count - self.hh_row_count
         print(f'ratio of column to row halfhits = {hh_col_count/self.hh_row_count if self.hh_row_count != 0 else np.inf} ({hh_col_count} col halfhits and {self.hh_row_count} row halfhits)')

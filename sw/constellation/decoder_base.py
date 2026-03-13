@@ -37,7 +37,7 @@ class DecoderBase:
         self.total_bytes_to_read = self.bin_file_size
         self.total_bytes_read = 0
         if self.decoder_settings.max_readout_blocks is not None:
-            print(f'Will read and decode {self.decoder_settings.max_readout_blocks} maximum, the progress bar will continuously estimate how much that is in Bytes')
+            print(f'Will read and decode {self.decoder_settings.max_readout_blocks} blocks maximum, the progress bar will continuously estimate how much that is in Bytes')
         else:
             print(f'Will read and decode the entire file with the size of {self.bin_file_size} Bytes')
         self.pbar = tqdm(total=self.total_bytes_to_read, unit='B', unit_scale=True, desc="Decoding")
