@@ -139,10 +139,21 @@ class DecoderBase:
             print('Ctrl+C pressed, finishing the current decoding and exiting')
 
         self.write_hits()
+        print('Decoder settings:')
+        self.decoder_settings.print()
+        print('\nStats:')
         self.stats.print()
         self.close_files()
 
     def read_block(self):
+        if self.decoder_settings.max_readout_blocks is not None and self.last_readout_id >= self.decoder_settings.max_readout_blocks:
+            print(f'Interrupting readout, because max block number has been read ({self.last_readout_id})')
+            return None
+
+        if self.decoder_settings.print_block_stats_freq is not None and self.last_readout_id % self.decoder_settings.print_block_stats_freq == 0:
+            print(f'Read {self.last_readout_id} blocks, average block size is {np.mean(self.stats.block_lengths_current)}')
+            self.stats.block_lengths_current.clear()
+
         read_int = self.bin_file.read(2)
         if len(read_int) == 0:
             return None
@@ -151,6 +162,7 @@ class DecoderBase:
         self.stats.total_byte_count += len(result_block)
         self.stats.block_lengths_total.append(len(result_block))
         self.stats.block_lengths_current.append(len(result_block))
+        self.last_readout_id += 1
         return result_block
 
     def split_packets(self, byte_block: bytes) -> list[bytes]:

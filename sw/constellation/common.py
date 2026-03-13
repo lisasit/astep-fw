@@ -36,6 +36,20 @@ class DecoderSettings:
     sample_clock_period_ns: float = 25
     # how frequently prints about blocks appear. None for not at all
     print_block_stats_freq:int | None  = 1000
+    # How many readout blocks to read and decode (for debugging)
+    max_readout_blocks: int | None = None
+
+    def print(self) -> None:
+        print(f'The setup contains {self.nlayers} layers with {self.nchips_per_layer} chips in each layer')
+        print(f'The FPGA timestamp is 8 Bytes long')
+        print(f'HalfHit filtering:')
+        print(f'    HalfHits with FPGA timestamp more than {self.fpga_ts_hh_filter_limit} ns different than the timestamp of the previous HalfHit are discarded')
+        print(f'HalfHit matching:')
+        print(f'    Max FPGA timestamp difference between halfhits in a hit is {self.fpga_ts_matching_limit} s')
+        print(f'    {"ALL" if self.matcher_strategy == MatcherStrategy.ALL else "CLOSEST"} matching strategy is used')
+        print(f'    Max on-chip timestamp difference between halfhits in a hit is {self.matcher_ts_limit} clock cycles')
+        print(f'    Max ToT difference between halfhits in a hit is {self.matcher_tot_limit*100}%')
+        print(f'    "Strip" files were {"" if self.write_strip_files else "not "}written')
 
 
 @dataclass

@@ -3,7 +3,7 @@ from constellation.common import DecoderSettings, Stats, MatcherStrategy
 import argparse
 import os
 
-def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchips_per_layer, nlayers, outdir):
+def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchips_per_layer, nlayers, outdir, max_readout_blocks, write_strip_files):
     os.makedirs('/'.join(filename.split('/')[:-1]), exist_ok=True)
 
     if outdir is None:
@@ -33,9 +33,11 @@ def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchip
             fpga_ts_clock_freq=80e6,
             fpga_ts_hh_filter_limit = 100000, # 100ks aka ~28h
             fpga_ts_matching_limit=3e-3, # 3ms
-            matcher_strategy=MatcherStrategy.ALL,
+            matcher_strategy=MatcherStrategy.CLOSEST,
             matcher_ts_limit=2, # clk cycles
-            matcher_tot_limit=0.2 # 20%
+            matcher_tot_limit=0.2, # 20%
+            max_readout_blocks=max_readout_blocks,
+            write_strip_files=write_strip_files
         )
         d = Decoder_v3(filename, stats, decoder_settings)
     else:
@@ -74,7 +76,7 @@ def main(args):
             file_extensions.append('.h5')
         if args.root:
             file_extensions.append('.root')
-        decode(filename, args.force, file_extensions, args.version, fpga_ts_length=args.fpga_ts_length, nchips_per_layer=args.nchips_per_layer, nlayers=args.nlayers, outdir=args.outdir)
+        decode(filename, args.force, file_extensions, args.version, fpga_ts_length=args.fpga_ts_length, nchips_per_layer=args.nchips_per_layer, nlayers=args.nlayers, outdir=args.outdir, max_readout_blocks=args.max_readout_blocks, write_strip_files=args.write_strip_files)
 
 
 if __name__ == "__main__":
@@ -91,6 +93,8 @@ if __name__ == "__main__":
     parser.add_argument('--nchips_per_layer', required=False, help='Number of chips per layer', type=int, default=1)
     parser.add_argument('--nlayers', required=False, help='Number of layers', type=int, default=1)
     parser.add_argument('-o', '--outdir', required=False, help='Directory for the output file', default=None)
+    parser.add_argument('-m', '--max-readout-blocks', required=False, help='Max number of readout blocks to process (for debugging mostly)', type=int, default=None)
+    parser.add_argument('-s', '--write-strip-files', required=False, action="store_true", default=False, help="Save the \"strip\" h5 files, where row and column halfhits are treated as hits in two separate strip detectors")
 
     args = parser.parse_args()
     main(args)

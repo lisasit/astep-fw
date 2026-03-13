@@ -36,7 +36,9 @@ class Decoder_v3(DecoderBase):
         # loop for filling hh_to_match once
         while True:
             # read and decode a block
-            if not self.hh_to_fill:
+            if self.hh_to_fill is None:
+                break
+            if len(self.hh_to_fill) == 0:
                 self.hh_to_fill = self.read_and_decode_next_block()
                 # check if we ran out of blocks in the binary file
                 if self.hh_to_fill is None:
@@ -74,11 +76,6 @@ class Decoder_v3(DecoderBase):
 
         if block is None:
             return None
-
-        self.last_readout_id += 1
-        if self.decoder_settings.print_block_stats_freq is not None and self.last_readout_id % self.decoder_settings.print_block_stats_freq == 0:
-            print(f'Read {self.last_readout_id} blocks, average block size is {np.mean(self.stats.block_lengths_current)}')
-            self.stats.block_lengths_current.clear()
 
         # Split block into packets
         packets = self.split_packets(block)
