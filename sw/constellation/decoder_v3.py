@@ -90,6 +90,8 @@ class Decoder_v3(DecoderBase):
         return result
 
     def check_hh(self, hh: HalfHit_v3) -> bool:
+        if self.last_good_fpga_ts is None:
+            self.last_good_fpga_ts = hh.fpga_ts
         if hh.fpga_ts == 0:
             self.stats.filtered_hh_count += 1
             self.stats.filtered_hh_row_count += 0 if hh.is_col else 1

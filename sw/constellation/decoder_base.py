@@ -20,7 +20,7 @@ class DecoderBase:
         self.leftovers = bytes()
 
         # Last FPGA timestamp for filtering
-        self.last_good_fpga_ts = 0
+        self.last_good_fpga_ts = None
 
         # number of the last readout block
         self.last_readout_id = 0
