@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -33,7 +33,9 @@ class DecoderSettings:
     # Flag to save h5 files for row and column halfhits separately
     write_strip_files: bool = False
     # Period of sample clock in ns. Default is 25 ns
-    sample_clock_period_ns = 25
+    sample_clock_period_ns: float = 25
+    # how frequently prints about blocks appear. None for not at all
+    print_block_stats_freq:int | None  = 1000
 
 
 @dataclass
@@ -49,6 +51,8 @@ class Stats:
     hit_count = 0
     first_fpga_timestamp: float | None = None
     last_fpga_timestamp: float | None = None
+    block_lengths_total: list[int] = field(default_factory=list)
+    block_lengths_current: list[int] = field(default_factory=list)
 
     def get_time_string(self, timestamp1, timestamp2):
         if timestamp1 is None or timestamp2 is None:
@@ -61,6 +65,7 @@ class Stats:
 
     def print(self):
         print(f'{self.skipped_byte_count} bytes skipped while decoding out of {self.total_byte_count} bytes of data ({round(self.skipped_byte_count/self.total_byte_count*100, 2) if self.total_byte_count != 0 else np.inf}%)')
+        print(f'Average size of a readout block is {np.mean(self.block_lengths_total)}')
         print(f'{self.hh_count} halfhits')
         hh_col_count = self.hh_count - self.hh_row_count
         print(f'ratio of column to row halfhits = {hh_col_count/self.hh_row_count if self.hh_row_count != 0 else np.inf} ({hh_col_count} col halfhits and {self.hh_row_count} row halfhits)')

@@ -7,6 +7,7 @@ from constellation.matcher_v3 import Matcher
 from collections import deque
 from dataclasses import fields
 import h5py
+import numpy as np
 
 class Decoder_v3(DecoderBase):
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
@@ -21,6 +22,7 @@ class Decoder_v3(DecoderBase):
 
         # Halfhit matching deque
         self.hh_to_match: deque[HalfHit_v3] = deque()
+        self.hh_to_fill: deque[HalfHit_v3] = deque()
 
         # Matched hits
         self.hits: list[Hit_v3] = []
@@ -29,50 +31,42 @@ class Decoder_v3(DecoderBase):
 
         self.matcher = Matcher(self.hh_to_match, stats, self.decoder_settings)
 
-    def decode(self) -> None:
-        hh_to_fill: deque[HalfHit_v3] = deque()
-        # loop for decoding everything
+    def decode_iteration(self) -> bool:
+        # one iteration of decoding. Returns True if more can be decoded and False if this is the last iteration
+        # loop for filling hh_to_match once
         while True:
-            # loop for filling hh_to_match once
-            while True:
-                # read and decode a block
-                if not hh_to_fill:
-                    hh_to_fill = self.read_and_decode_next_block()
-                    # check if we ran out of blocks in the binary file
-                    if hh_to_fill is None:
-                        break
-                # Check if the hh_to_match needs to be filled
-                hh_to_match_full = False
-                while hh_to_fill:
-                    hh = hh_to_fill[0]
-                    if self.hh_to_match and float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
-                            #print(f"Stop filling ({float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq} > {self.decoder_settings.fpga_ts_matching_limit})")
-                            hh_to_match_full = True
-                            break
-                    #print(f"Add {'col' if hh.is_col else 'row'} hh {hh.index} with loc {hh.location:02d}, fpga ts {hh.fpga_ts}, chip ts {hh.timestamp:03d}, tot {hh.tot_raw:04d}")
-
-                    # Move halfthit to matching deque and to internal list of all halfhits 
-                    self.halfhits.append(hh_to_fill[0])
-                    self.hh_to_match.append(hh_to_fill.popleft())
-                if hh_to_match_full:
+            # read and decode a block
+            if not self.hh_to_fill:
+                self.hh_to_fill = self.read_and_decode_next_block()
+                # check if we ran out of blocks in the binary file
+                if self.hh_to_fill is None:
                     break
+            # Check if the hh_to_match needs to be filled
+            hh_to_match_full = False
+            while self.hh_to_fill:
+                hh = self.hh_to_fill[0]
+                if self.hh_to_match and float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
+                        #print(f"Stop filling ({float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq} > {self.decoder_settings.fpga_ts_matching_limit})")
+                        hh_to_match_full = True
+                        break
+                #print(f"Add {'col' if hh.is_col else 'row'} hh {hh.index} with loc {hh.location:02d}, fpga ts {hh.fpga_ts}, chip ts {hh.timestamp:03d}, tot {hh.tot_raw:04d}")
 
-            # Check if any halfhits are left for matching
-            if not hh_to_fill and not self.hh_to_match:
-                print("Nothing left to match, leaving")
+                # Move halfthit to matching deque and to internal list of all halfhits 
+                self.halfhits.append(self.hh_to_fill[0])
+                self.hh_to_match.append(self.hh_to_fill.popleft())
+            if hh_to_match_full:
                 break
 
-            # Match hits
-            matched_hits = self.matcher.match()
-            self.hits += matched_hits
-            self.stats.hit_count += len(matched_hits)
+        # Check if any halfhits are left for matching
+        if not self.hh_to_fill and not self.hh_to_match:
+            print("Nothing left to match, leaving")
+            return False
 
-            # Write hits from time to time
-            if len(self.hits) > 100000:
-                self.write_hits()
-
-        self.write_hits()
-        self.close_files()
+        # Match hits
+        matched_hits = self.matcher.match()
+        self.hits += matched_hits
+        self.stats.hit_count += len(matched_hits)
+        return True
 
     def read_and_decode_next_block(self):
         result: deque[HalfHit_v3] = deque()
@@ -82,8 +76,9 @@ class Decoder_v3(DecoderBase):
             return None
 
         self.last_readout_id += 1
-        if self.verbose and self.last_readout_id % 1000 == 0:
-            print(f'Read {self.last_readout_id} blocks')
+        if self.decoder_settings.print_block_stats_freq is not None and self.last_readout_id % self.decoder_settings.print_block_stats_freq == 0:
+            print(f'Read {self.last_readout_id} blocks, average block size is {np.mean(self.stats.block_lengths_current)}')
+            self.stats.block_lengths_current.clear()
 
         # Split block into packets
         packets = self.split_packets(block)

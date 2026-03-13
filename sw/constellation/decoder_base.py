@@ -123,6 +123,25 @@ class DecoderBase:
         if self.h5_file_hits is not None:
             self.h5_file_hits.close()
 
+    def decode_iteration(self):
+        return False
+
+    def decode(self):
+        try:
+            while True:
+                should_continue = self.decode_iteration()
+                if not should_continue:
+                    break
+                # Write hits from time to time
+                if len(self.hits) > 100000:
+                    self.write_hits()
+        except KeyboardInterrupt:
+            print('Ctrl+C pressed, finishing the current decoding and exiting')
+
+        self.write_hits()
+        self.stats.print()
+        self.close_files()
+
     def read_block(self):
         read_int = self.bin_file.read(2)
         if len(read_int) == 0:
@@ -130,6 +149,8 @@ class DecoderBase:
         nbits = int.from_bytes(read_int, "little")
         result_block = self.bin_file.read(nbits)
         self.stats.total_byte_count += len(result_block)
+        self.stats.block_lengths_total.append(len(result_block))
+        self.stats.block_lengths_current.append(len(result_block))
         return result_block
 
     def split_packets(self, byte_block: bytes) -> list[bytes]:
