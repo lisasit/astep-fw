@@ -227,7 +227,8 @@ class DecoderBase:
             )
             self.h5_file_hits.flush()
 
-        if self.stats.first_fpga_timestamp is None:
+        if self.stats.first_fpga_timestamp is None and self.hits:
             self.stats.first_fpga_timestamp = float(self.hits[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9
-        self.stats.last_fpga_timestamp = self.hits[-1].fpga_ts / self.decoder_settings.fpga_ts_clock_freq * 1e9
+        if self.hits:
+            self.stats.last_fpga_timestamp = self.hits[-1].fpga_ts / self.decoder_settings.fpga_ts_clock_freq * 1e9
         self.hits.clear()
