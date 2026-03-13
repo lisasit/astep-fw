@@ -6,6 +6,7 @@ import yaml
 import h5py
 import numpy as np
 from tqdm import tqdm
+import toml
 
 class DecoderBase:
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
