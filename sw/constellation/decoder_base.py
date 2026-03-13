@@ -123,10 +123,10 @@ class DecoderBase:
         self.root_file = uproot.recreate(filename)
         self.read_configs()
         if self.constellation_config is not None:
-            self.root_file['constellation_config'] = self.prepare_dict_for_root(self.constellation_config)
+            self.root_file.mktree('constellation_config', self.prepare_dict_for_root(self.constellation_config))
 
         if self.chip_config is not None:
-            self.root_file['chip_config'] = self.prepare_dict_for_root(self.chip_config)
+            self.root_file.mktree('chip_config', self.prepare_dict_for_root(self.chip_config))
 
     def close_files(self):
         if self.root_file is not None:
