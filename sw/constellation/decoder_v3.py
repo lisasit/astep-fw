@@ -61,7 +61,7 @@ class Decoder_v3(DecoderBase):
 
         # Check if any halfhits are left for matching
         if not self.hh_to_fill and not self.hh_to_match:
-            print("Nothing left to match, leaving")
+            #print("Nothing left to match, leaving")
             return False
 
         # Match hits

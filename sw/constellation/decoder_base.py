@@ -5,6 +5,7 @@ import uproot
 import yaml
 import h5py
 import numpy as np
+from tqdm import tqdm
 
 class DecoderBase:
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
@@ -30,6 +31,17 @@ class DecoderBase:
 
         self.verbose = True
         self.find_configs(bin_filename=bin_filename)
+
+        # bin_file_size and total_bytes_to_read will be the same, unless the user specified a max number of blocks to read
+        self.bin_file_size = os.path.getsize(bin_filename)
+        self.total_bytes_to_read = self.bin_file_size
+        self.total_bytes_read = 0
+        if self.decoder_settings.max_readout_blocks is not None:
+            print(f'Will read and decode {self.decoder_settings.max_readout_blocks} maximum, the progress bar will continuously estimate how much that is in Bytes')
+        else:
+            print(f'Will read and decode the entire file with the size of {self.bin_file_size} Bytes')
+        self.pbar = tqdm(total=self.total_bytes_to_read, unit='B', unit_scale=True, desc="Decoding")
+        self.nreadouts_since_last_pbar_update = 0
 
     def flatten(self, to_flatten):
         result_dict = {}
@@ -136,6 +148,7 @@ class DecoderBase:
                 if len(self.hits) > 100000:
                     self.write_hits()
         except KeyboardInterrupt:
+            self.pbar.close()
             print('Ctrl+C pressed, finishing the current decoding and exiting')
 
         self.write_hits()
@@ -145,24 +158,49 @@ class DecoderBase:
         self.stats.print()
         self.close_files()
 
+    def update_progress_bar(self):
+        self.pbar.update(self.total_bytes_read)
+        avg_block_size = np.mean(self.stats.block_lengths_current)
+        self.pbar.set_postfix({
+                "blocks": f"{self.last_readout_id/1000.:.1f}k",
+                "avg_size": f"{avg_block_size:.1f}B"
+            })
+        if self.decoder_settings.max_readout_blocks is not None:
+            new_total = (avg_block_size + 2)*self.decoder_settings.max_readout_blocks
+            self.total_bytes_to_read = min(self.bin_file_size, new_total)
+            self.pbar.total = self.total_bytes_to_read
+            self.pbar.refresh()
+        self.total_bytes_read = 0
+        self.nreadouts_since_last_pbar_update = 0
+        self.stats.block_lengths_current.clear()
+        
+
     def read_block(self):
         if self.decoder_settings.max_readout_blocks is not None and self.last_readout_id >= self.decoder_settings.max_readout_blocks:
+            self.update_progress_bar()
+            self.pbar.close()
             print(f'Interrupting readout, because max block number has been read ({self.last_readout_id})')
+            # saying to the progress bar to go to 100% regardless of the size of the last block and if it fits our estimation
             return None
 
-        if self.decoder_settings.print_block_stats_freq is not None and self.last_readout_id % self.decoder_settings.print_block_stats_freq == 0:
-            print(f'Read {self.last_readout_id} blocks, average block size is {np.mean(self.stats.block_lengths_current)}')
-            self.stats.block_lengths_current.clear()
+        #if self.decoder_settings.print_block_stats_freq is not None and self.last_readout_id % self.decoder_settings.print_block_stats_freq == 0:
+         #   print(f'Read {self.last_readout_id} blocks, average block size is {np.mean(self.stats.block_lengths_current)}')
+          #  self.stats.block_lengths_current.clear()
 
         read_int = self.bin_file.read(2)
         if len(read_int) == 0:
+            self.pbar.close()
             return None
         nbits = int.from_bytes(read_int, "little")
         result_block = self.bin_file.read(nbits)
+        self.total_bytes_read += 2 + len(result_block)
         self.stats.total_byte_count += len(result_block)
         self.stats.block_lengths_total.append(len(result_block))
         self.stats.block_lengths_current.append(len(result_block))
         self.last_readout_id += 1
+        self.nreadouts_since_last_pbar_update += 1
+        if self.nreadouts_since_last_pbar_update >= 500:
+            self.update_progress_bar()
         return result_block
 
     def split_packets(self, byte_block: bytes) -> list[bytes]:
