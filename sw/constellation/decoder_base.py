@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 from tqdm import tqdm
 import toml
+from constellation.utils import make_nice_number
 
 class DecoderBase:
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
@@ -42,7 +43,10 @@ class DecoderBase:
         else:
             print(f'Will read and decode the entire file with the size of {self.bin_file_size} Bytes')
         self.pbar = tqdm(total=self.total_bytes_to_read, unit='B', unit_scale=True, desc="Decoding")
+        self.pbars_stats = [tqdm(total=0, bar_format='{desc}')]
+        self.pbars_stats[0].set_description_str("Decoding AstroPix data")
         self.nreadouts_since_last_pbar_update = 0
+        self.reason_for_stopping = "The whole file has been decoded"
 
     def flatten(self, to_flatten):
         result_dict = {}
@@ -129,15 +133,29 @@ class DecoderBase:
         if self.chip_config is not None:
             self.root_file.mktree('chip_config', self.prepare_dict_for_root(self.chip_config))
 
+    def finalize_decoding(self):
+        self.pbar.close()
+        for pbar in self.pbars_stats:
+            pbar.close()
+        print(self.reason_for_stopping)
+        print('Decoder settings:')
+        self.decoder_settings.print()
+        print('\nStats:')
+        self.stats.print()
+        self.close_files()
+
+
     def close_files(self):
         if self.root_file is not None:
             self.root_file.close()
-
         if self.h5_file_hits is not None:
             self.h5_file_hits.close()
 
     def decode_iteration(self):
         return False
+
+    def time_to_write_files(self):
+        return len(self.hits) > 10000
 
     def decode(self):
         try:
@@ -146,34 +164,18 @@ class DecoderBase:
                 if not should_continue:
                     break
                 # Write hits from time to time
-                if len(self.hits) > 100000:
+                if self.time_to_write_files():
                     self.write_hits()
         except KeyboardInterrupt:
-            self.pbar.close()
-            print('Ctrl+C pressed, finishing the current decoding and exiting')
+            self.reason_for_stopping = 'Ctrl+C pressed, exiting'
 
         self.write_hits()
-        print('Decoder settings:')
-        self.decoder_settings.print()
-        print('\nStats:')
-        self.stats.print()
-        self.close_files()
+        self.finalize_decoding()
 
     def update_progress_bar(self):
         self.pbar.update(self.total_bytes_read)
         avg_block_size = np.mean(self.stats.block_lengths_current)
-        if self.last_readout_id < 1e3:
-            block_text = f"{self.last_readout_id:.1f}"
-        elif self.last_readout_id < 1e6:
-            block_text = f"{self.last_readout_id*1./1e3:.1f}k"
-        elif self.last_readout_id < 1e9:
-            block_text = f"{self.last_readout_id*1./1e6:.1f}M"
-        else:
-            block_text = f"{self.last_readout_id*1./1e9:.1f}B"
-        self.pbar.set_postfix({
-                "blocks": block_text,
-                "avg_size": f"{avg_block_size:.1f}B"
-            })
+        self.pbars_stats[0].set_description_str(f'{make_nice_number(self.last_readout_id)} blocks, average block size is {avg_block_size:.1f}B, {self.stats.hit_count} hits')
         if self.decoder_settings.max_readout_blocks is not None:
             new_total = (avg_block_size + 2)*self.decoder_settings.max_readout_blocks
             self.total_bytes_to_read = min(self.bin_file_size, new_total)
@@ -186,13 +188,11 @@ class DecoderBase:
 
     def read_block(self):
         if self.decoder_settings.max_readout_blocks is not None and self.last_readout_id >= self.decoder_settings.max_readout_blocks:
-            self.pbar.close()
-            print(f'Interrupting readout, because max block number has been read ({self.last_readout_id})')
+            self.reason_for_stopping = f'Interrupting readout, because max block number has been read ({self.last_readout_id})'
             return None
 
         read_int = self.bin_file.read(2)
         if len(read_int) == 0:
-            self.pbar.close()
             return None
         nbits = int.from_bytes(read_int, "little")
         result_block = self.bin_file.read(nbits)

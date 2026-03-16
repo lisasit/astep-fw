@@ -8,6 +8,8 @@ from collections import deque
 from dataclasses import fields
 import h5py
 import numpy as np
+from constellation.utils import make_nice_number
+from tqdm import tqdm
 
 class Decoder_v3(DecoderBase):
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
@@ -30,6 +32,8 @@ class Decoder_v3(DecoderBase):
         self.halfhits: list[HalfHit_v3] = []
 
         self.matcher = Matcher(self.hh_to_match, stats, self.decoder_settings)
+
+        self.pbars_stats.append(tqdm(total=0, bar_format='{desc}'))
 
     def decode_iteration(self) -> bool:
         # one iteration of decoding. Returns True if more can be decoded and False if this is the last iteration
@@ -195,6 +199,12 @@ class Decoder_v3(DecoderBase):
         for hh_type in self.h5_strip_files:
             self.h5_strip_files[hh_type].close()
 
+    def time_to_write_files(self):
+        return super().time_to_write_files() or len(self.halfhits) > 20000
+
+    def update_progress_bar(self):
+        super().update_progress_bar()
+        self.pbars_stats[1].set_description_str(f'{make_nice_number(self.stats.hh_count)} halfhits, {make_nice_number(self.stats.hh_row_count)} row halfhits, {make_nice_number(self.stats.hh_count - self.stats.hh_row_count)} col halfhits, {make_nice_number(self.stats.hit_count)} hits')
 
     def write_hits(self):
         # if writing strip files for halfhits
