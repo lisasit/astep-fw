@@ -162,6 +162,14 @@ class DecoderBase:
     def update_progress_bar(self):
         self.pbar.update(self.total_bytes_read)
         avg_block_size = np.mean(self.stats.block_lengths_current)
+        if self.last_readout_id < 1e3:
+            blocks_text = f"{self.last_readout_id:.1f}"
+        elif self.last_readout_id < 1e6:
+            block_text = f"{self.last_readout_id*1./1e3.:.1f}k"
+        elif self.last_readout_id < 1e9:
+            block_text = f"{self.last_readout_id*1./1e6:.1f}M"
+        else:
+            block_text = f"{self.last_readout_id*1./1e9:.1f}B"
         self.pbar.set_postfix({
                 "blocks": f"{self.last_readout_id/1000.:.1f}k",
                 "avg_size": f"{avg_block_size:.1f}B"
