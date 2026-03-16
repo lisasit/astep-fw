@@ -1,7 +1,9 @@
 from collections import deque
 
 from common import DecoderSettings, MatcherStrategy, Stats
-from hit_classes import HalfHit_v3, Hit_v3, MatchedHit_v3
+from constellation.hit_classes import HalfHit_v3, Hit_v3, MatchedHit_v3
+
+from constellation.utils import find_timestamp_difference
 
 class Matcher:
 
@@ -61,8 +63,7 @@ class Matcher:
         return True
 
     def timestamp_check(self, ts1: int, ts2: int) -> bool:
-        larger_ts, smaller_ts = (ts1, ts2) if ts1 > ts2 else (ts2, ts1)
-        timestamp_difference = min([larger_ts - smaller_ts, 256 + smaller_ts - larger_ts])
+        timestamp_difference = find_timestamp_difference(ts1, ts2, 2) 
         if timestamp_difference > self.decoder_settings.matcher_ts_limit:
             return False
         return True

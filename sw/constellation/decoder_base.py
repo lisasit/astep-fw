@@ -175,7 +175,7 @@ class DecoderBase:
     def update_progress_bar(self):
         self.pbar.update(self.total_bytes_read)
         avg_block_size = np.mean(self.stats.block_lengths_current)
-        self.pbars_stats[0].set_description_str(f'{make_nice_number(self.last_readout_id)} blocks, average block size is {avg_block_size:.1f}B, {self.stats.hit_count} hits')
+        self.pbars_stats[0].set_description_str(f'{make_nice_number(self.last_readout_id)} blocks, average block size is {avg_block_size:.1f}B, {make_nice_number(self.stats.hit_count)} hits')
         if self.decoder_settings.max_readout_blocks is not None:
             new_total = (avg_block_size + 2)*self.decoder_settings.max_readout_blocks
             self.total_bytes_to_read = min(self.bin_file_size, new_total)

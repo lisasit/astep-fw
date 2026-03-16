@@ -8,7 +8,7 @@ from collections import deque
 from dataclasses import fields
 import h5py
 import numpy as np
-from constellation.utils import make_nice_number
+from constellation.utils import make_nice_number, find_timestamp_difference
 from tqdm import tqdm
 
 class Decoder_v3(DecoderBase):
@@ -51,7 +51,7 @@ class Decoder_v3(DecoderBase):
             hh_to_match_full = False
             while self.hh_to_fill:
                 hh = self.hh_to_fill[0]
-                if self.hh_to_match and float(hh.fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
+                if self.hh_to_match and float(find_timestamp_difference(hh.fpga_ts, self.hh_to_match[0].fpga_ts, self.decoder_settings.fpga_ts_length*8)) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
                         hh_to_match_full = True
                         break
 
@@ -204,7 +204,7 @@ class Decoder_v3(DecoderBase):
 
     def update_progress_bar(self):
         super().update_progress_bar()
-        self.pbars_stats[1].set_description_str(f'{make_nice_number(self.stats.hh_count)} halfhits, {make_nice_number(self.stats.hh_row_count)} row halfhits, {make_nice_number(self.stats.hh_count - self.stats.hh_row_count)} col halfhits, {make_nice_number(self.stats.hit_count)} hits')
+        self.pbars_stats[1].set_description_str(f'{make_nice_number(self.stats.hh_count)} halfhits, {make_nice_number(self.stats.hh_row_count)} row halfhits, {make_nice_number(self.stats.hh_count - self.stats.hh_row_count)} col halfhits')
 
     def write_hits(self):
         # if writing strip files for halfhits
