@@ -165,13 +165,13 @@ class DecoderBase:
         if self.last_readout_id < 1e3:
             blocks_text = f"{self.last_readout_id:.1f}"
         elif self.last_readout_id < 1e6:
-            block_text = f"{self.last_readout_id*1./1e3.:.1f}k"
+            block_text = f"{self.last_readout_id*1./1e3:.1f}k"
         elif self.last_readout_id < 1e9:
             block_text = f"{self.last_readout_id*1./1e6:.1f}M"
         else:
             block_text = f"{self.last_readout_id*1./1e9:.1f}B"
         self.pbar.set_postfix({
-                "blocks": f"{self.last_readout_id/1000.:.1f}k",
+                "blocks": block_text,
                 "avg_size": f"{avg_block_size:.1f}B"
             })
         if self.decoder_settings.max_readout_blocks is not None:
