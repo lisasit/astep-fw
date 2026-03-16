@@ -180,14 +180,15 @@ class Decoder_v3(DecoderBase):
         super().prepare_h5_file(filename)
         filename_path = Path(filename)
 
-        for hh_type in ['row', 'col']:
-            self.h5_strip_files[hh_type] = h5py.File(f"{filename_path.parent}/{filename_path.stem}_{hh_type}{filename_path.suffix}", "w")
-            self.h5_strip_datasets[hh_type] = self.h5_strip_files[hh_type].create_dataset("Hits",
-                                                                    shape=(0, ),
-                                                                    maxshape=(None, ),
-                                                                    chunks=True,
-                                                                    dtype=HIT_TYPE
-                                                                    )
+        if self.decoder_settings.write_strip_files:
+            for hh_type in ['row', 'col']:
+                self.h5_strip_files[hh_type] = h5py.File(f"{filename_path.parent}/{filename_path.stem}_{hh_type}{filename_path.suffix}", "w")
+                self.h5_strip_datasets[hh_type] = self.h5_strip_files[hh_type].create_dataset("Hits",
+                                                                        shape=(0, ),
+                                                                        maxshape=(None, ),
+                                                                        chunks=True,
+                                                                        dtype=HIT_TYPE
+                                                                        )
 
     def prepare_root_file(self, filename) -> None:
         super().prepare_root_file(filename)
