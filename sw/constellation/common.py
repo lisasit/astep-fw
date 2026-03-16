@@ -20,8 +20,8 @@ class DecoderSettings:
     fpga_ts_length: int
     # FPGA timestamp clock frequency in Hz
     fpga_ts_clock_freq: float
-    # Maximum FPGA timestamp difference between halfhits for filterung
-    fpga_ts_hh_filter_limit: float
+    # Maximum FPGA timestamp difference between halfhits for filtering. If None, filtering is disabled
+    fpga_ts_hh_filter_limit: float | None
     # Maximum FPGA timestamp difference for matching in seconds
     fpga_ts_matching_limit: float
     # Matcher strategy
@@ -41,7 +41,10 @@ class DecoderSettings:
         print(f'The setup contains {self.nlayers} layers with {self.nchips_per_layer} chips in each layer')
         print(f'The FPGA timestamp is 8 Bytes long')
         print(f'HalfHit filtering:')
-        print(f'    HalfHits with FPGA timestamp more than {self.fpga_ts_hh_filter_limit} ns different than the timestamp of the previous HalfHit are discarded')
+        if self.fpga_ts_hh_filter_limit is None:
+            print(f'    disabled')
+        else:
+            print(f'    HalfHits with FPGA timestamp more than {self.fpga_ts_hh_filter_limit} ns different than the timestamp of the previous HalfHit are discarded')
         print(f'HalfHit matching:')
         print(f'    Max FPGA timestamp difference between halfhits in a hit is {self.fpga_ts_matching_limit} s')
         print(f'    {"ALL" if self.matcher_strategy == MatcherStrategy.ALL else "CLOSEST"} matching strategy is used')

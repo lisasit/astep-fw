@@ -90,6 +90,8 @@ class Decoder_v3(DecoderBase):
         return result
 
     def check_hh(self, hh: HalfHit_v3) -> bool:
+        if self.decoder_settings.fpga_ts_hh_filter_limit is None:
+            return True
         if self.last_good_fpga_ts is None:
             self.last_good_fpga_ts = hh.fpga_ts
         if hh.fpga_ts == 0:

@@ -163,7 +163,7 @@ class DecoderBase:
         self.pbar.update(self.total_bytes_read)
         avg_block_size = np.mean(self.stats.block_lengths_current)
         if self.last_readout_id < 1e3:
-            blocks_text = f"{self.last_readout_id:.1f}"
+            block_text = f"{self.last_readout_id:.1f}"
         elif self.last_readout_id < 1e6:
             block_text = f"{self.last_readout_id*1./1e3:.1f}k"
         elif self.last_readout_id < 1e9:
