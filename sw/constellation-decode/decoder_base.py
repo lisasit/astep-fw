@@ -1,5 +1,3 @@
-from common import Stats, DecoderSettings
-from hit_classes import HIT_TYPE
 import os
 import uproot
 import yaml
@@ -7,13 +5,16 @@ import h5py
 import numpy as np
 from tqdm import tqdm
 import toml
-from constellation.utils import make_nice_number
+
+from .common import Stats, DecoderSettings
+from .hit_classes import HIT_TYPE
+from .utils import make_nice_number
 
 class DecoderBase:
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
         self.bin_file = open(bin_filename, 'rb')
 
-        self.decoder_settings = decoder_settings 
+        self.decoder_settings = decoder_settings
         self.stats = stats
 
         # Leftover bytes from package splitting
@@ -83,12 +84,12 @@ class DecoderBase:
             if len(fitting_files) == 0:
                 if self.verbose:
                     print(f'.{file_extension} file could not be found automatically')
-                return None 
+                return None
             elif len(fitting_files) > 1:
                 if self.verbose:
                     print(f'Multiple .{file_extension} files could be the config, so leaving it empty')
                     print(f'Possible configs: {fitting_files}')
-                return None 
+                return None
             else:
                 if self.verbose:
                     print(f'.{file_extension} config found: {fitting_files[0]}')
@@ -184,7 +185,7 @@ class DecoderBase:
         self.total_bytes_read = 0
         self.nreadouts_since_last_pbar_update = 0
         self.stats.block_lengths_current.clear()
-        
+
 
     def read_block(self):
         if self.decoder_settings.max_readout_blocks is not None and self.last_readout_id >= self.decoder_settings.max_readout_blocks:

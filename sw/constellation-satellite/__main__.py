@@ -8,7 +8,7 @@ Provides the entry point for the AstroPix satellite
 from constellation.core.logging import setup_cli_logging
 from constellation.core.satellite import SatelliteArgumentParser
 
-from constellation.ASTEP import ASTEP
+from .ASTEP import ASTEP
 
 
 def main(args=None):
