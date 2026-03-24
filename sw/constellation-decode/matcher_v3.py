@@ -1,9 +1,8 @@
 from collections import deque
 
-from common import DecoderSettings, MatcherStrategy, Stats
-from constellation.hit_classes import HalfHit_v3, Hit_v3, MatchedHit_v3
-
-from constellation.utils import find_timestamp_difference
+from .common import DecoderSettings, MatcherStrategy, Stats
+from .hit_classes import HalfHit_v3, Hit_v3, MatchedHit_v3
+from .utils import find_timestamp_difference
 
 class Matcher:
 
@@ -54,16 +53,16 @@ class Matcher:
                 hits += self.strategy_all(matches)
 
         return hits
-    
+
     def chip_check(self, hh: HalfHit_v3, other_hh: HalfHit_v3) -> bool:
         if hh.layer != other_hh.layer:
-            return False 
+            return False
         if hh.chip_id != other_hh.chip_id:
-            return False 
+            return False
         return True
 
     def timestamp_check(self, ts1: int, ts2: int) -> bool:
-        timestamp_difference = find_timestamp_difference(ts1, ts2, 2) 
+        timestamp_difference = find_timestamp_difference(ts1, ts2, 2)
         if timestamp_difference > self.decoder_settings.matcher_ts_limit:
             return False
         return True

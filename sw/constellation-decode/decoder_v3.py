@@ -1,15 +1,16 @@
 from __future__ import annotations
-from decoder_base import DecoderBase
 from pathlib import Path
-from constellation.common import Stats, DecoderSettings
-from constellation.hit_classes import HalfHit_v3, Hit_v3, HIT_TYPE
-from constellation.matcher_v3 import Matcher
 from collections import deque
 from dataclasses import fields
 import h5py
 import numpy as np
-from constellation.utils import make_nice_number, find_timestamp_difference
 from tqdm import tqdm
+
+from .common import Stats, DecoderSettings
+from .decoder_base import DecoderBase
+from .hit_classes import HalfHit_v3, Hit_v3, HIT_TYPE
+from .matcher_v3 import Matcher
+from .utils import make_nice_number, find_timestamp_difference
 
 class Decoder_v3(DecoderBase):
     def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
@@ -55,7 +56,7 @@ class Decoder_v3(DecoderBase):
                         hh_to_match_full = True
                         break
 
-                # Move halfthit to matching deque and to internal list of all halfhits 
+                # Move halfthit to matching deque and to internal list of all halfhits
                 self.halfhits.append(self.hh_to_fill[0])
                 self.hh_to_match.append(self.hh_to_fill.popleft())
             if hh_to_match_full:
@@ -129,7 +130,7 @@ class Decoder_v3(DecoderBase):
         byte = int(packet[2])
         chip_id = byte >> 3
         payload = byte & 0b00000111
-        
+
         # Numbering starts with 0
         if chip_id >= self.decoder_settings.nchips_per_layer:
             return False
@@ -212,7 +213,7 @@ class Decoder_v3(DecoderBase):
         if self.h5_file_hits is not None and self.decoder_settings.write_strip_files:
             def is_right_hh(hh, hh_type):
                 if hh_type == 'row':
-                    return not hh.is_col 
+                    return not hh.is_col
                 return hh.is_col
             def make_right_list(hh, hh_type):
                 result = [0, 0, hh.tot_raw, hh.tot_us, float(hit.fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9, 0]
@@ -239,10 +240,3 @@ class Decoder_v3(DecoderBase):
             self.root_file['halfhits'].extend(halfhit_dict)
         super().write_hits()
         self.halfhits.clear()
-
-    
-
-    
-
-
-

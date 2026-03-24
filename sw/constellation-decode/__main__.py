@@ -1,7 +1,8 @@
-from constellation.decoder_v3 import Decoder_v3
-from constellation.common import DecoderSettings, Stats, MatcherStrategy
 import argparse
 import os
+
+from .decoder_v3 import Decoder_v3
+from .common import DecoderSettings, Stats, MatcherStrategy
 
 def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchips_per_layer, nlayers, outdir, max_readout_blocks, write_strip_files):
     os.makedirs('/'.join(filename.split('/')[:-1]), exist_ok=True)
@@ -24,7 +25,7 @@ def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchip
             return
 
     stats = Stats()
-    
+
     if chip_version == 3:
         decoder_settings = DecoderSettings(
             nlayers=nlayers,
