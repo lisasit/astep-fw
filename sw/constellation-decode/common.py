@@ -36,6 +36,8 @@ class DecoderSettings:
     sample_clock_period_ns: float = 25
     # How many readout blocks to read and decode (for debugging)
     max_readout_blocks: int | None = None
+    # Was the TLU used? If yes, then all halfhits before T0 are thrown away (this is when the FPGA ts becomes 0)
+    use_tlu: bool = False
 
     def print(self) -> None:
         print(f'The setup contains {self.nlayers} layers with {self.nchips_per_layer} chips in each layer')
@@ -61,6 +63,7 @@ class Stats:
     hh_row_count = 0
     filtered_hh_count = 0
     zero_ts_hh_count = 0
+    before_t0_hh_count = 0
     filtered_hh_row_count = 0
     hh_wo_match_count = 0
     hit_count = 0
@@ -84,7 +87,7 @@ class Stats:
         print(f'{self.hh_count} halfhits')
         hh_col_count = self.hh_count - self.hh_row_count
         print(f'ratio of column to row halfhits = {hh_col_count/self.hh_row_count if self.hh_row_count != 0 else np.inf} ({hh_col_count} col halfhits and {self.hh_row_count} row halfhits)')
-        print(f'{self.filtered_hh_count} halfhits were filtered out ({round(self.filtered_hh_count/self.hh_count*100, 2) if self.hh_count != 0 else np.inf}%), including {self.zero_ts_hh_count} hits with fpga timestamp 0')
+        print(f'{self.filtered_hh_count} halfhits were filtered out ({round(self.filtered_hh_count/self.hh_count*100, 2) if self.hh_count != 0 else np.inf}%), including {self.zero_ts_hh_count} halfhits with fpga timestamp 0 and {self.before_t0_hh_count} halfhits before the T0 signal')
         filtered_hh_col_count = self.filtered_hh_count - self.filtered_hh_row_count
         print(f'ratio of filtered column to row halfhits = {filtered_hh_col_count/self.filtered_hh_row_count if self.filtered_hh_row_count != 0 else np.inf} ({filtered_hh_col_count} col halfhits and {self.filtered_hh_row_count} row halfhits)')
         print(f'{self.hit_count} hits')

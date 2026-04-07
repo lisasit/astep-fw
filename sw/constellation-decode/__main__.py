@@ -4,7 +4,7 @@ import os
 from .decoder_v3 import Decoder_v3
 from .common import DecoderSettings, Stats, MatcherStrategy
 
-def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchips_per_layer, nlayers, outdir, max_readout_blocks, write_strip_files):
+def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchips_per_layer, nlayers, outdir, max_readout_blocks, write_strip_files, matcher_strategy, use_tlu):
     os.makedirs('/'.join(filename.split('/')[:-1]), exist_ok=True)
 
     if outdir is None:
@@ -34,11 +34,12 @@ def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchip
             fpga_ts_clock_freq=80e6,
             fpga_ts_hh_filter_limit = 100000, # 100ks aka ~28h
             fpga_ts_matching_limit=3e-3, # 3ms
-            matcher_strategy=MatcherStrategy.CLOSEST,
+            matcher_strategy=matcher_strategy,
             matcher_ts_limit=2, # clk cycles
             matcher_tot_limit=0.2, # 20%
             max_readout_blocks=max_readout_blocks,
-            write_strip_files=write_strip_files
+            write_strip_files=write_strip_files,
+            use_tlu=use_tlu
         )
         d = Decoder_v3(filename, stats, decoder_settings)
     else:
@@ -70,6 +71,11 @@ def main(args):
         print(f'Decoding directory {args.dir}')
         filenames = [f'{args.dir}/{filename}' for filename in os.listdir(args.dir) if filename.endswith('.bin')]
 
+    if args.closest:
+        matcher_strategy = MatcherStrategy.CLOSEST
+    else:
+        matcher_strategy = MatcherStrategy.ALL
+
     for filename in filenames:
         print(f'Decoding file {filename}')
         file_extensions = []
@@ -77,7 +83,7 @@ def main(args):
             file_extensions.append('.h5')
         if args.root:
             file_extensions.append('.root')
-        decode(filename, args.force, file_extensions, args.version, fpga_ts_length=args.fpga_ts_length, nchips_per_layer=args.nchips_per_layer, nlayers=args.nlayers, outdir=args.outdir, max_readout_blocks=args.max_readout_blocks, write_strip_files=args.write_strip_files)
+        decode(filename, args.force, file_extensions, args.version, fpga_ts_length=args.fpga_ts_length, nchips_per_layer=args.nchips_per_layer, nlayers=args.nlayers, outdir=args.outdir, max_readout_blocks=args.max_readout_blocks, write_strip_files=args.write_strip_files, matcher_strategy=matcher_strategy, use_tlu=args.use_tlu)
 
 
 if __name__ == "__main__":
@@ -96,6 +102,8 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--outdir', required=False, help='Directory for the output file', default=None)
     parser.add_argument('-m', '--max-readout-blocks', required=False, help='Max number of readout blocks to process (for debugging mostly)', type=int, default=None)
     parser.add_argument('-s', '--write-strip-files', required=False, action="store_true", default=False, help="Save the \"strip\" h5 files, where row and column halfhits are treated as hits in two separate strip detectors")
+    parser.add_argument('-t', '--use-tlu', required=False, action="store_true", default=False, help="Flag to indicate that the TLU was used. This means that the FPGA timestamp does not grow monotonously, but drops to 0 when the T0 signal from the TLU is received")
+    parser.add_argument('-c', '--closest', required=False, action="store_true", default=False, help="Strategy to use for matching (v3 only). If used, the CLOSEST strategy will be used, otherwise the ALL strategy will be used")
 
     args = parser.parse_args()
     main(args)

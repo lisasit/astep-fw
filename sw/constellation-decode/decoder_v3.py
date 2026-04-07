@@ -36,6 +36,9 @@ class Decoder_v3(DecoderBase):
 
         self.pbars_stats.append(tqdm(total=0, bar_format='{desc}'))
 
+        self.past_t0 = False 
+        self.last_hh_fpga_ts = None
+
     def decode_iteration(self) -> bool:
         # one iteration of decoding. Returns True if more can be decoded and False if this is the last iteration
         # loop for filling hh_to_match once
@@ -92,25 +95,35 @@ class Decoder_v3(DecoderBase):
                 self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
                 if self.check_hh(decoded_packet):
                     result.append(decoded_packet)
+                else:
+                    self.stats.filtered_hh_count += 1
+                    self.stats.filtered_hh_row_count += 0 if decoded_packet.is_col else 1
         return result
 
     def check_hh(self, hh: HalfHit_v3) -> bool:
+        if self.decoder_settings.use_tlu and not self.past_t0:
+            if self.last_hh_fpga_ts is None:
+                # arbitrary: if the first FPGA ts is smaller than 1s, assume this is already after t0
+                if hh.fpga_ts / self.decoder_settings.fpga_ts_clock_freq <= 1:
+                    self.past_t0 = True 
+                    return True
+            else:
+                if hh.fpga_ts < self.last_hh_fpga_ts:
+                    self.past_t0 = True 
+                    return True
+            self.last_hh_fpga_ts = hh.fpga_ts
+            self.stats.before_t0_hh_count += 1
+            return False
         if self.decoder_settings.fpga_ts_hh_filter_limit is None:
             return True
         if self.last_good_fpga_ts is None:
             self.last_good_fpga_ts = hh.fpga_ts
         if hh.fpga_ts == 0:
-            self.stats.filtered_hh_count += 1
-            self.stats.filtered_hh_row_count += 0 if hh.is_col else 1
             self.stats.zero_ts_hh_count += 1
             return False
         if hh.fpga_ts < self.last_good_fpga_ts:
-            self.stats.filtered_hh_count += 1
-            self.stats.filtered_hh_row_count += 0 if hh.is_col else 1
             return False
-        if abs(hh.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_hh_filter_limit:
-            self.stats.filtered_hh_count += 1
-            self.stats.filtered_hh_row_count += 0 if hh.is_col else 1
+        if abs(hh.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_hh_filter_limit:            
             return False
         self.last_good_fpga_ts = hh.fpga_ts
         return True
