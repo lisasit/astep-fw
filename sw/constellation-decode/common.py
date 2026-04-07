@@ -84,7 +84,7 @@ class Stats:
         print(f'{self.hh_count} halfhits')
         hh_col_count = self.hh_count - self.hh_row_count
         print(f'ratio of column to row halfhits = {hh_col_count/self.hh_row_count if self.hh_row_count != 0 else np.inf} ({hh_col_count} col halfhits and {self.hh_row_count} row halfhits)')
-        print(f'{self.filtered_hh_count} halfhits were filtered out ({round(self.filtered_hh_count/self.hh_count, 2) if self.hh_count != 0 else np.inf}%), including {self.zero_ts_hh_count} hits with fpga timestamp 0')
+        print(f'{self.filtered_hh_count} halfhits were filtered out ({round(self.filtered_hh_count/self.hh_count*100, 2) if self.hh_count != 0 else np.inf}%), including {self.zero_ts_hh_count} hits with fpga timestamp 0')
         filtered_hh_col_count = self.filtered_hh_count - self.filtered_hh_row_count
         print(f'ratio of filtered column to row halfhits = {filtered_hh_col_count/self.filtered_hh_row_count if self.filtered_hh_row_count != 0 else np.inf} ({filtered_hh_col_count} col halfhits and {self.filtered_hh_row_count} row halfhits)')
         print(f'{self.hit_count} hits')
