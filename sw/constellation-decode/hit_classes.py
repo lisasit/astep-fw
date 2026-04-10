@@ -52,3 +52,27 @@ class Hit_v3:
     timestamp: int 
     chip_id: int 
     layer: int 
+
+@dataclass
+class Hit_v4:
+    row: int
+    col: int
+    fpga_ts: int
+    tot_raw: int
+    tot_us: float
+    timestamp: int 
+    chip_id: int 
+    layer: int
+    payload: int
+
+        # self.ts1_neg = None
+        # self.ts1 = None
+        # self.ts1_fine = None
+        # self.ts1_tdc = None
+        # self.ts2_neg = None
+        # self.ts2 = None
+        # self.ts2_fine = None
+        # self.ts2_tdc = None
+        # self.ts1_dec = None
+        # self.ts2_dec = None
+

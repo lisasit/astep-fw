@@ -6,14 +6,14 @@ import h5py
 import numpy as np
 from tqdm import tqdm
 
-from .common import Stats, DecoderSettings
+from .common import Stats_v3, DecoderSettings_v3
 from .decoder_base import DecoderBase
 from .hit_classes import HalfHit_v3, Hit_v3, HIT_TYPE
 from .matcher_v3 import Matcher
 from .utils import make_nice_number, find_timestamp_difference
 
 class Decoder_v3(DecoderBase):
-    def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
+    def __init__(self, bin_filename, stats: Stats_v3, decoder_settings: DecoderSettings_v3):
         super().__init__(bin_filename, stats, decoder_settings)
 
         # h5 files for saving the halfhit data as if we had two separate strip detectors
@@ -96,7 +96,7 @@ class Decoder_v3(DecoderBase):
                 if self.check_hh(decoded_packet):
                     result.append(decoded_packet)
                 else:
-                    self.stats.filtered_hh_count += 1
+                    self.stats.filtered_packet_count += 1
                     self.stats.filtered_hh_row_count += 0 if decoded_packet.is_col else 1
         return result
 
@@ -112,18 +112,18 @@ class Decoder_v3(DecoderBase):
                     self.past_t0 = True 
                     return True
             self.last_hh_fpga_ts = hh.fpga_ts
-            self.stats.before_t0_hh_count += 1
+            self.stats.before_t0_packet_count += 1
             return False
-        if self.decoder_settings.fpga_ts_hh_filter_limit is None:
+        if self.decoder_settings.fpga_ts_packet_filter_limit is None:
             return True
         if self.last_good_fpga_ts is None:
             self.last_good_fpga_ts = hh.fpga_ts
         if hh.fpga_ts == 0:
-            self.stats.zero_ts_hh_count += 1
+            self.stats.zero_ts_packet_count += 1
             return False
         if hh.fpga_ts < self.last_good_fpga_ts:
             return False
-        if abs(hh.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_hh_filter_limit:            
+        if abs(hh.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_packet_filter_limit:            
             return False
         self.last_good_fpga_ts = hh.fpga_ts
         return True

@@ -1,12 +1,12 @@
 from collections import deque
 
-from .common import DecoderSettings, MatcherStrategy, Stats
+from .common import DecoderSettings_v3, MatcherStrategy, Stats_v3
 from .hit_classes import HalfHit_v3, Hit_v3, MatchedHit_v3
 from .utils import find_timestamp_difference
 
 class Matcher:
 
-    def __init__(self, hh_to_match: deque[HalfHit_v3], stats: Stats, decoder_settings: DecoderSettings):
+    def __init__(self, hh_to_match: deque[HalfHit_v3], stats: Stats_v3, decoder_settings: DecoderSettings_v3):
         self.hh_to_match = hh_to_match
         self.stats = stats
         self.decoder_settings = decoder_settings

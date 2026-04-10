@@ -6,12 +6,12 @@ import numpy as np
 from tqdm import tqdm
 import toml
 
-from .common import Stats, DecoderSettings
+from .common import StatsBase, DecoderSettingsBase
 from .hit_classes import HIT_TYPE
 from .utils import make_nice_number
 
 class DecoderBase:
-    def __init__(self, bin_filename, stats: Stats, decoder_settings: DecoderSettings):
+    def __init__(self, bin_filename, stats: StatsBase, decoder_settings: DecoderSettingsBase):
         self.bin_file = open(bin_filename, 'rb')
 
         self.decoder_settings = decoder_settings
