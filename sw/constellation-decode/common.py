@@ -71,6 +71,15 @@ class Stats:
     last_fpga_timestamp: float | None = None
     block_lengths_total: list[int] = field(default_factory=list)
     block_lengths_current: list[int] = field(default_factory=list)
+    reasons_for_skipping_bytes = {key : 0 for key in [
+        "header_and_length_different",
+        "wrong_fpga_ts_length",
+        "wrong_layer",
+        "wrong_chip_id",
+        "wrong_astropix_payload_length"
+        ]
+                                 }
+
 
     def get_time_string(self, timestamp1, timestamp2):
         if timestamp1 is None or timestamp2 is None:
@@ -83,6 +92,9 @@ class Stats:
 
     def print(self):
         print(f'{self.skipped_byte_count} bytes skipped while decoding out of {self.total_byte_count} bytes of data ({round(self.skipped_byte_count/self.total_byte_count*100, 2) if self.total_byte_count != 0 else np.inf}%)')
+        print("Reasons for skipping bytes:")
+        for key in self.reasons_for_skipping_bytes:
+            print(f"{key} :", self.reasons_for_skipping_bytes[key])
         print(f'Average size of a readout block is {np.mean(self.block_lengths_total)}')
         print(f'{self.hh_count} halfhits')
         hh_col_count = self.hh_count - self.hh_row_count

@@ -130,13 +130,16 @@ class Decoder_v3(DecoderBase):
 
     def check_packet(self, packet: bytes) -> bool:
         if len(packet) - 1 != int(packet[0]):
+            self.stats.reasons_for_skipping_bytes["header_and_length_different"] += 1
             return False
         if len(packet) - 7 != self.decoder_settings.fpga_ts_length:
+            self.stats.reasons_for_skipping_bytes["wrong_fpga_ts_length"] += 1
             return False
 
         # Numbering starts with 1
         layer = int(packet[1])
         if layer > self.decoder_settings.nlayers:
+            self.stats.reasons_for_skipping_bytes["wrong_layer"] += 1
             return False
 
         # byte 2 is a header. 3 bit payload, 5 bit chip id
@@ -146,10 +149,12 @@ class Decoder_v3(DecoderBase):
 
         # Numbering starts with 0
         if chip_id >= self.decoder_settings.nchips_per_layer:
+            self.stats.reasons_for_skipping_bytes["wrong_chip_id"] += 1
             return False
 
         # For v3 payload is always 4
         if payload != 4:
+            self.stats.reasons_for_skipping_bytes["wrong_astropix_payload_length"] += 1
             return False
 
         return True
