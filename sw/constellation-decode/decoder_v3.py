@@ -174,22 +174,19 @@ class Decoder_v3(DecoderBase):
                 if hh_type == 'row':
                     return not hh.is_col
                 return hh.is_col
-            def make_right_list(hh, hh_type):
-                result = [0, 0, hh.tot_raw, hh.tot_us, float(hit.fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9, 0]
-                if hh_type == 'row':
-                    result[1] = hh.location
-                else:
-                    result[0] = hh.location
-                return result
+
+            def make_right_list(hh):
+                return (hh.location if hh.is_col else 0, 0 if hh.is_col else hh.location, hh.tot_raw, hh.tot_us, float(hh.fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9, 0)
+
             for hh_type in ['row', 'col']:
                 assert self.h5_strip_datasets[hh_type]
                 current_rows = self.h5_strip_datasets[hh_type].shape[0]
                 correct_hh = [hh for hh in self.halfhits if is_right_hh(hh, hh_type)]
                 self.h5_strip_datasets[hh_type].resize((current_rows + len(correct_hh), ))
                 self.h5_strip_datasets[hh_type][current_rows:] = np.array(
-                    [make_right_list(hh, hh_type) for hh in correct_hh], dtype=HIT_TYPE
+                    [make_right_list(hh) for hh in correct_hh], dtype=HIT_TYPE
                 )
-                self.h5_strip_files[h_type].flush()
+                self.h5_strip_files[hh_type].flush()
 
         # if writing into a root file
         if self.root_file is not None:
