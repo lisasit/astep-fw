@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import uproot
 import yaml
@@ -239,7 +240,7 @@ class DecoderBase:
                     self.past_t0 = True 
                     return True
             else:
-                if decoded_packet.fpga_ts < self.last_hh_fpga_ts:
+                if decoded_packet.fpga_ts < self.last_fpga_ts:
                     self.past_t0 = True 
                     return True
             self.last_fpga_ts = decoded_packet.fpga_ts

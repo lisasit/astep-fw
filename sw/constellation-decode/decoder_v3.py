@@ -36,6 +36,10 @@ class Decoder_v3(DecoderBase):
 
         self.pbars_stats.append(tqdm(total=0, bar_format='{desc}'))
 
+        # attempt to account for overflow of the on-chip timestamp counter by artificailly adding the overflow part
+        self.last_hh_chip_ts: int | None = None
+        self.chip_ts_overflow: int = 0
+
     def decode_iteration(self) -> bool:
         # one iteration of decoding. Returns True if more can be decoded and False if this is the last iteration
         # loop for filling hh_to_match once
@@ -91,6 +95,11 @@ class Decoder_v3(DecoderBase):
                 self.stats.hh_count += 1
                 self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
                 if self.is_not_filtered_out(decoded_packet):
+                    if not decoded_packet.is_col:
+                        if self.last_hh_chip_ts is not None and self.last_hh_chip_ts > decoded_packet.timestamp: 
+                            self.chip_ts_overflow += 2**8
+                        self.last_hh_chip_ts = decoded_packet.timestamp
+                    decoded_packet.timestamp += self.chip_ts_overflow
                     result.append(decoded_packet)
                 else:
                     self.stats.filtered_packet_count += 1

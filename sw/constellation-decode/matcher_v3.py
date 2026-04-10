@@ -62,7 +62,7 @@ class Matcher:
         return True
 
     def timestamp_check(self, ts1: int, ts2: int) -> bool:
-        timestamp_difference = find_timestamp_difference(ts1, ts2, 2)
+        timestamp_difference = find_timestamp_difference(ts1, ts2, 8)
         if timestamp_difference > self.decoder_settings.matcher_ts_limit:
             return False
         return True
@@ -91,7 +91,6 @@ class Matcher:
     def convert_hit(self, hit: MatchedHit_v3) -> Hit_v3:
         # Take the row timestamp since it is read out first
         # Take the average ToT
-        #print(f"Selected match with row hh {hit.index_row} and col hh {hit.index_col}")
         hit_tot_raw = round((hit.tot_col + hit.tot_row) / 2)
         return Hit_v3(hit.row, hit.col, hit.fpga_ts_row, hit_tot_raw, hit_tot_raw*self.decoder_settings.sample_clock_period_ns, hit.timestamp_row, hit.chip_id, hit.layer)
 
