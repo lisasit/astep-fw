@@ -36,9 +36,6 @@ class Decoder_v3(DecoderBase):
 
         self.pbars_stats.append(tqdm(total=0, bar_format='{desc}'))
 
-        self.past_t0 = False 
-        self.last_hh_fpga_ts = None
-
     def decode_iteration(self) -> bool:
         # one iteration of decoding. Returns True if more can be decoded and False if this is the last iteration
         # loop for filling hh_to_match once
@@ -93,71 +90,15 @@ class Decoder_v3(DecoderBase):
             if decoded_packet is not None:
                 self.stats.hh_count += 1
                 self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
-                if self.check_hh(decoded_packet):
+                if self.is_not_filtered_out(decoded_packet):
                     result.append(decoded_packet)
                 else:
                     self.stats.filtered_packet_count += 1
                     self.stats.filtered_hh_row_count += 0 if decoded_packet.is_col else 1
         return result
 
-    def check_hh(self, hh: HalfHit_v3) -> bool:
-        if self.decoder_settings.use_tlu and not self.past_t0:
-            if self.last_hh_fpga_ts is None:
-                # arbitrary: if the first FPGA ts is smaller than 1s, assume this is already after t0
-                if hh.fpga_ts / self.decoder_settings.fpga_ts_clock_freq <= 1:
-                    self.past_t0 = True 
-                    return True
-            else:
-                if hh.fpga_ts < self.last_hh_fpga_ts:
-                    self.past_t0 = True 
-                    return True
-            self.last_hh_fpga_ts = hh.fpga_ts
-            self.stats.before_t0_packet_count += 1
-            return False
-        if self.decoder_settings.fpga_ts_packet_filter_limit is None:
-            return True
-        if self.last_good_fpga_ts is None:
-            self.last_good_fpga_ts = hh.fpga_ts
-        if hh.fpga_ts == 0:
-            self.stats.zero_ts_packet_count += 1
-            return False
-        if hh.fpga_ts < self.last_good_fpga_ts:
-            return False
-        if abs(hh.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_packet_filter_limit:            
-            return False
-        self.last_good_fpga_ts = hh.fpga_ts
-        return True
-
     def check_packet(self, packet: bytes) -> bool:
-        if len(packet) - 1 != int(packet[0]):
-            self.stats.reasons_for_skipping_bytes["header_and_length_different"] += 1
-            return False
-        if len(packet) - 7 != self.decoder_settings.fpga_ts_length:
-            self.stats.reasons_for_skipping_bytes["wrong_fpga_ts_length"] += 1
-            return False
-
-        # Numbering starts with 1
-        layer = int(packet[1])
-        if layer > self.decoder_settings.nlayers:
-            self.stats.reasons_for_skipping_bytes["wrong_layer"] += 1
-            return False
-
-        # byte 2 is a header. 3 bit payload, 5 bit chip id
-        byte = int(packet[2])
-        chip_id = byte >> 3
-        payload = byte & 0b00000111
-
-        # Numbering starts with 0
-        if chip_id >= self.decoder_settings.nchips_per_layer:
-            self.stats.reasons_for_skipping_bytes["wrong_chip_id"] += 1
-            return False
-
-        # For v3 payload is always 4
-        if payload != 4:
-            self.stats.reasons_for_skipping_bytes["wrong_astropix_payload_length"] += 1
-            return False
-
-        return True
+        return super().check_packet(packet, payload_length=4)
 
     def decode_packet(self, packet: bytes) -> HalfHit_v3 | None:
         if len(packet) < 7:
@@ -165,7 +106,7 @@ class Decoder_v3(DecoderBase):
             return None
         if len(packet) > 15:
             print(f'ERROR, hit packet too long ({len(packet)}), probably something went wrong with splitting packets')
-            return
+            return None
 
         self.last_hh_index += 1
 

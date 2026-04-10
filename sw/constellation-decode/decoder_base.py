@@ -6,12 +6,12 @@ import numpy as np
 from tqdm import tqdm
 import toml
 
-from .common import StatsBase, DecoderSettingsBase
-from .hit_classes import HIT_TYPE
+from .common import Stats_v3, Stats_v4, DecoderSettings_v3, DecoderSettings_v4
+from .hit_classes import HIT_TYPE, HalfHit_v3, Hit_v4
 from .utils import make_nice_number
 
 class DecoderBase:
-    def __init__(self, bin_filename, stats: StatsBase, decoder_settings: DecoderSettingsBase):
+    def __init__(self, bin_filename, stats: Stats_v3 | Stats_v4, decoder_settings: DecoderSettings_v3 | DecoderSettings_v4):
         self.bin_file = open(bin_filename, 'rb')
 
         self.decoder_settings = decoder_settings
@@ -48,6 +48,10 @@ class DecoderBase:
         self.pbars_stats[0].set_description_str("Decoding AstroPix data")
         self.nreadouts_since_last_pbar_update = 0
         self.reason_for_stopping = "The whole file has been decoded"
+
+        # for filtering out data before the T0 signal when using the TLU
+        self.past_t0 = False 
+        self.last_fpga_ts = None
 
     def flatten(self, to_flatten):
         result_dict = {}
@@ -225,6 +229,68 @@ class DecoderBase:
                 self.stats.skipped_byte_count += 1
                 i += 1
         return result_packets
+
+    def is_not_filtered_out(self, decoded_packet: HalfHit_v3 | Hit_v4):
+        # returns True if the hit/halfhit is good and False if it should be filtered out
+        if self.decoder_settings.use_tlu and not self.past_t0:
+            if self.last_fpga_ts is None:
+                # arbitrary: if the first FPGA ts is smaller than 1s, assume this is already after t0
+                if decoded_packet.fpga_ts / self.decoder_settings.fpga_ts_clock_freq <= 1:
+                    self.past_t0 = True 
+                    return True
+            else:
+                if decoded_packet.fpga_ts < self.last_hh_fpga_ts:
+                    self.past_t0 = True 
+                    return True
+            self.last_fpga_ts = decoded_packet.fpga_ts
+            self.stats.before_t0_packet_count += 1
+            return False
+        if self.decoder_settings.fpga_ts_packet_filter_limit is None:
+            return True
+        if self.last_good_fpga_ts is None:
+            self.last_good_fpga_ts = decoded_packet.fpga_ts
+        if hh.fpga_ts == 0:
+            self.stats.zero_ts_packet_count += 1
+            return False
+        if hh.fpga_ts < self.last_good_fpga_ts:
+            return False
+        if abs(decoded_packet.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_packet_filter_limit:            
+            return False
+        self.last_good_fpga_ts = decoded_packet.fpga_ts
+        return True
+
+    def check_packet(self, packet: bytes, payload_length: int) -> bool:
+        # generic checks valid for all chip versions
+        if len(packet) - 1 != int(packet[0]):
+            self.stats.reasons_for_skipping_bytes["header_and_length_different"] += 1
+            return False
+
+        # 3 = header from the FPGA (2 bytes) + header from the astropix frame (1 byte)
+        if len(packet) - payload_length - 3 != self.decoder_settings.fpga_ts_length:
+            self.stats.reasons_for_skipping_bytes["wrong_fpga_ts_length"] += 1
+            return False
+
+        # Numbering starts with 1
+        layer = int(packet[1])
+        if layer > self.decoder_settings.nlayers:
+            self.stats.reasons_for_skipping_bytes["wrong_layer"] += 1
+            return False
+
+        # byte 2 is a header. 3 bit payload, 5 bit chip id
+        byte = int(packet[2])
+        chip_id = byte >> 3
+        payload = byte & 0b00000111
+
+        # Numbering starts with 0
+        if chip_id >= self.decoder_settings.nchips_per_layer:
+            self.stats.reasons_for_skipping_bytes["wrong_chip_id"] += 1
+            return False
+
+        if payload != payload_length:
+            self.stats.reasons_for_skipping_bytes["wrong_astropix_payload_length"] += 1
+            return False
+
+        return True
 
     def write_hits(self):
         if self.h5_file_hits is not None:

@@ -68,7 +68,11 @@ class DecoderSettings_v3(DecoderSettingsBase):
 
 @dataclass
 class DecoderSettings_v4(DecoderSettingsBase):
-    pass
+    use_negedge_ts: bool = True 
+    def print(self) -> None:
+        super().print()
+        print(f'Decoding:')
+        print(f'    Negedge TS is {" " if self.use_negedge_ts else "not "}used')
 
 @dataclass
 class StatsBase:
