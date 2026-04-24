@@ -68,6 +68,8 @@ class Matcher:
         return True
 
     def tot_check(self, hh: HalfHit_v3, other_hh: HalfHit_v3) -> bool:
+        if self.decoder_settings.matcher_tot_limit is None:
+            return True
         if hh.tot_raw == 0 or abs(hh.tot_raw - other_hh.tot_raw) / hh.tot_raw > self.decoder_settings.matcher_tot_limit:
             return False
         return True

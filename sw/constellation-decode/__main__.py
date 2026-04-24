@@ -25,8 +25,6 @@ def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchip
             print(f'File decoded with all ({file_extensions}) extensions, skipping')
             return
 
-    
-
     if chip_version == 3:
         stats = Stats_v3()
         decoder_settings = DecoderSettings_v3(
@@ -35,10 +33,10 @@ def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchip
             fpga_ts_length=fpga_ts_length,
             fpga_ts_clock_freq=80e6,
             fpga_ts_packet_filter_limit = None,#100000, # 100ks aka ~28h
-            fpga_ts_matching_limit=3e-3, # 3ms
+            fpga_ts_matching_limit=args.matcher_time_window,
             matcher_strategy=matcher_strategy,
-            matcher_ts_limit=2, # clk cycles
-            matcher_tot_limit=0.2, # 20%
+            matcher_ts_limit=args.matcher_ts_limit,
+            matcher_tot_limit=args.matcher_tot_limit,
             max_readout_blocks=max_readout_blocks,
             write_strip_files=write_strip_files,
             use_tlu=use_tlu
@@ -116,6 +114,9 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--write-strip-files', required=False, action="store_true", default=False, help="Save the \"strip\" h5 files, where row and column halfhits are treated as hits in two separate strip detectors")
     parser.add_argument('-t', '--use-tlu', required=False, action="store_true", default=False, help="Flag to indicate that the TLU was used. This means that the FPGA timestamp does not grow monotonously, but drops to 0 when the T0 signal from the TLU is received")
     parser.add_argument('-c', '--closest', required=False, action="store_true", default=False, help="Strategy to use for matching (v3 only). If used, the CLOSEST strategy will be used, otherwise the ALL strategy will be used")
+    parser.add_argument('--matcher-ts-limit', required=False, type=int, default=2, help="Maximum chip timestamp difference in clock cycles for matching (v3 only)")
+    parser.add_argument('--matcher-tot-limit', required=False, default=None, type=float, help="Relative ToT limit for matching (v3 only). If used, only halfhits whose ToT deviates at most by the given limit will be considerd for matching, otherwise ToT matching is disabled")
+    parser.add_argument('--matcher-time-window', required=False, type=float, default=3e-3, help="Time window for matching in seconds (v3 only)")
 
     args = parser.parse_args()
     main(args)
