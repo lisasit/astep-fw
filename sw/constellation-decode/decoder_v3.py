@@ -25,10 +25,13 @@ class Decoder_v3(DecoderBase):
 
         # Halfhit matching deque
         self.hh_to_match: deque[HalfHit_v3] = deque()
-        self.hh_to_fill: deque[HalfHit_v3] = deque()
+        self.hh_to_fill: deque[HalfHit_v3] | None = deque()
 
-        # Matched hits
-        self.hits: list[Hit_v3] = []
+        # Override types
+        self.hits: list[Hit_v3]
+        self.decoder_settings: DecoderSettings_v3
+        self.stats: Stats_v3
+
         # Halfhits
         self.halfhits: list[HalfHit_v3] = []
 
@@ -76,7 +79,7 @@ class Decoder_v3(DecoderBase):
         self.stats.hit_count += len(matched_hits)
         return True
 
-    def read_and_decode_next_block(self):
+    def read_and_decode_next_block(self) -> deque[HalfHit_v3] | None:
         result: deque[HalfHit_v3] = deque()
         block = self.read_block()
 
@@ -96,7 +99,7 @@ class Decoder_v3(DecoderBase):
                 self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
                 if self.is_not_filtered_out(decoded_packet):
                     if not decoded_packet.is_col:
-                        if self.last_hh_chip_ts is not None and self.last_hh_chip_ts > decoded_packet.timestamp: 
+                        if self.last_hh_chip_ts is not None and self.last_hh_chip_ts > decoded_packet.timestamp:
                             self.chip_ts_overflow += 2**8
                         self.last_hh_chip_ts = decoded_packet.timestamp
                     decoded_packet.timestamp += self.chip_ts_overflow
@@ -107,7 +110,7 @@ class Decoder_v3(DecoderBase):
         return result
 
     def check_packet(self, packet: bytes) -> bool:
-        return super().check_packet(packet, payload_length=4)
+        return super()._check_packet(packet, payload_length=4)
 
     def decode_packet(self, packet: bytes) -> HalfHit_v3 | None:
         if len(packet) < 7:

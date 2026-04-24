@@ -8,13 +8,14 @@ from tqdm import tqdm
 import toml
 
 from .common import Stats_v3, Stats_v4, DecoderSettings_v3, DecoderSettings_v4
-from .hit_classes import HIT_TYPE, HalfHit_v3, Hit_v4
+from .hit_classes import HIT_TYPE, HalfHit_v3, Hit_v3, Hit_v4
 from .utils import make_nice_number
 
 class DecoderBase:
     def __init__(self, bin_filename, stats: Stats_v3 | Stats_v4, decoder_settings: DecoderSettings_v3 | DecoderSettings_v4):
         self.bin_file = open(bin_filename, 'rb')
 
+        self.hits: list[Hit_v3] | list[Hit_v4] = []
         self.decoder_settings = decoder_settings
         self.stats = stats
 
@@ -51,7 +52,7 @@ class DecoderBase:
         self.reason_for_stopping = "The whole file has been decoded"
 
         # for filtering out data before the T0 signal when using the TLU
-        self.past_t0 = False 
+        self.past_t0 = False
         self.last_fpga_ts = None
 
     def flatten(self, to_flatten):
@@ -158,7 +159,7 @@ class DecoderBase:
             self.h5_file_hits.close()
 
     def decode_iteration(self):
-        return False
+        raise NotImplementedError
 
     def time_to_write_files(self):
         return len(self.hits) > 10000
@@ -237,11 +238,11 @@ class DecoderBase:
             if self.last_fpga_ts is None:
                 # arbitrary: if the first FPGA ts is smaller than 1s, assume this is already after t0
                 if decoded_packet.fpga_ts / self.decoder_settings.fpga_ts_clock_freq <= 1:
-                    self.past_t0 = True 
+                    self.past_t0 = True
                     return True
             else:
                 if decoded_packet.fpga_ts < self.last_fpga_ts:
-                    self.past_t0 = True 
+                    self.past_t0 = True
                     return True
             self.last_fpga_ts = decoded_packet.fpga_ts
             self.stats.before_t0_packet_count += 1
@@ -255,12 +256,15 @@ class DecoderBase:
             return False
         if hh.fpga_ts < self.last_good_fpga_ts:
             return False
-        if abs(decoded_packet.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_packet_filter_limit:            
+        if abs(decoded_packet.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_packet_filter_limit:
             return False
         self.last_good_fpga_ts = decoded_packet.fpga_ts
         return True
 
-    def check_packet(self, packet: bytes, payload_length: int) -> bool:
+    def check_packet(self, packet: bytes) -> bool:
+        raise NotImplementedError
+
+    def _check_packet(self, packet: bytes, payload_length: int) -> bool:
         # generic checks valid for all chip versions
         if len(packet) - 1 != int(packet[0]):
             self.stats.reasons_for_skipping_bytes["header_and_length_different"] += 1
