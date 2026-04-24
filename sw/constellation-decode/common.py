@@ -53,7 +53,7 @@ class DecoderSettings_v3(DecoderSettingsBase):
     # Maximum halfhit timestamp difference for matching in clock cycles
     matcher_ts_limit: int = 2
     # Maximum relative ToT deviation for matching
-    matcher_tot_limit: float = 0.2
+    matcher_tot_limit: float | None = None
     # Flag to save h5 files for row and column halfhits separately
     write_strip_files: bool = False
 
@@ -63,7 +63,7 @@ class DecoderSettings_v3(DecoderSettingsBase):
         print(f'    Max FPGA timestamp difference between halfhits in a hit is {self.fpga_ts_matching_limit} s')
         print(f'    {"ALL" if self.matcher_strategy == MatcherStrategy.ALL else "CLOSEST"} matching strategy is used')
         print(f'    Max on-chip timestamp difference between halfhits in a hit is {self.matcher_ts_limit} clock cycles')
-        print(f'    Max ToT difference between halfhits in a hit is {self.matcher_tot_limit*100}%')
+        print(f'    Max ToT difference between halfhits in a hit is {"ignored" if self.matcher_tot_limit is None else str(self.matcher_tot_limit*100)+"%"}')
         print(f'    "Strip" files were {"" if self.write_strip_files else "not "}written')
 
 @dataclass
