@@ -251,11 +251,6 @@ class DecoderBase:
             return True
         if self.last_good_fpga_ts is None:
             self.last_good_fpga_ts = decoded_packet.fpga_ts
-        if hh.fpga_ts == 0:
-            self.stats.zero_ts_packet_count += 1
-            return False
-        if hh.fpga_ts < self.last_good_fpga_ts:
-            return False
         if abs(decoded_packet.fpga_ts - self.last_good_fpga_ts) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_packet_filter_limit:
             return False
         self.last_good_fpga_ts = decoded_packet.fpga_ts

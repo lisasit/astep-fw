@@ -79,7 +79,6 @@ class StatsBase:
     total_byte_count = 0
     skipped_byte_count = 0
     filtered_packet_count = 0
-    zero_ts_packet_count = 0
     before_t0_packet_count = 0
     hit_count = 0
     first_fpga_timestamp: float | None = None
@@ -114,7 +113,7 @@ class StatsBase:
         print(f'Average size of a readout block is {np.mean(self.block_lengths_total)}')
 
     def print_filtering_stats(self, total_number):
-        print(f'{self.filtered_packet_count} packets were filtered out ({round(self.filtered_packet_count/total_number*100., 2) if total_number != 0 else np.inf}%), including {self.zero_ts_packet_count} packets with fpga timestamp 0 and {self.before_t0_packet_count} packets before the T0 signal')
+        print(f'{self.filtered_packet_count} packets were filtered out ({round(self.filtered_packet_count/total_number*100., 2) if total_number != 0 else np.inf}%), including {self.before_t0_packet_count} packets before the T0 signal')
 
     def print_hit_stats(self):
         print(f'{self.hit_count} hits')
