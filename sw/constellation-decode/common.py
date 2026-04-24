@@ -31,12 +31,12 @@ class DecoderSettingsBase:
 
     def print_setup_info(self) -> None:
         print(f'The setup contains {self.nlayers} layers with {self.nchips_per_layer} chips in each layer')
-        print(f'The FPGA timestamp is 8 Bytes long')
+        print( 'The FPGA timestamp is 8 Bytes long')
 
     def print_filtering_info(self) -> None:
-        print(f'Packet filtering:')
+        print( 'Packet filtering:')
         if self.fpga_ts_packet_filter_limit is None:
-            print(f'    disabled')
+            print( '    disabled')
         else:
             print(f'    Packets with FPGA timestamp more than {self.fpga_ts_packet_filter_limit} ns different than the timestamp of the previous packet are discarded')
 
@@ -59,7 +59,7 @@ class DecoderSettings_v3(DecoderSettingsBase):
 
     def print(self) -> None:
         super().print()
-        print(f'HalfHit matching:')
+        print( 'HalfHit matching:')
         print(f'    Max FPGA timestamp difference between halfhits in a hit is {self.fpga_ts_matching_limit} s')
         print(f'    {"ALL" if self.matcher_strategy == MatcherStrategy.ALL else "CLOSEST"} matching strategy is used')
         print(f'    Max on-chip timestamp difference between halfhits in a hit is {self.matcher_ts_limit} clock cycles')
@@ -68,10 +68,10 @@ class DecoderSettings_v3(DecoderSettingsBase):
 
 @dataclass
 class DecoderSettings_v4(DecoderSettingsBase):
-    use_negedge_ts: bool = True 
+    use_negedge_ts: bool = True
     def print(self) -> None:
         super().print()
-        print(f'Decoding:')
+        print( 'Decoding:')
         print(f'    Negedge TS is {" " if self.use_negedge_ts else "not "}used')
 
 @dataclass
@@ -81,6 +81,7 @@ class StatsBase:
     filtered_packet_count = 0
     zero_ts_packet_count = 0
     before_t0_packet_count = 0
+    packet_count = 0
     hit_count = 0
     first_fpga_timestamp: float | None = None
     last_fpga_timestamp: float | None = None
@@ -113,8 +114,8 @@ class StatsBase:
     def print_block_stats(self):
         print(f'Average size of a readout block is {np.mean(self.block_lengths_total)}')
 
-    def print_filtering_stats(self, total_number):
-        print(f'{self.filtered_packet_count} packets were filtered out ({round(self.filtered_packet_count/total_number*100., 2) if total_number != 0 else np.inf}%), including {self.zero_ts_packet_count} packets with fpga timestamp 0 and {self.before_t0_packet_count} packets before the T0 signal')
+    def print_filtering_stats(self):
+        print(f'{self.filtered_packet_count} packets were filtered out ({round(self.filtered_packet_count/self.packet_count*100., 2) if self.packet_count != 0 else np.inf}%), including {self.zero_ts_packet_count} packets with fpga timestamp 0 and {self.before_t0_packet_count} packets before the T0 signal')
 
     def print_hit_stats(self):
         print(f'{self.hit_count} hits')
@@ -123,21 +124,21 @@ class StatsBase:
         if self.first_fpga_timestamp:
             print(f'First FPGA timestamp is {self.first_fpga_timestamp:.0f} ns')
         else:
-            print(f'First FPGA timestamp is unknown')
+            print( 'First FPGA timestamp is unknown')
 
         if self.last_fpga_timestamp:
             print(f'Last FPGA timestamp is {self.last_fpga_timestamp:.0f} ns')
         else:
-            print(f'Last FPGA timestamp is unknown')
+            print( 'Last FPGA timestamp is unknown')
         if self.first_fpga_timestamp and self.last_fpga_timestamp:
             print(f'The decoded part approximately corresponds to {self.get_time_string(self.last_fpga_timestamp, self.first_fpga_timestamp)} of run time')
 
     def print(self):
         self.print_skipped_byte_stats()
         self.print_block_stats()
-        self.print_filtering_stats(self.hit_count)
+        self.print_filtering_stats()
         self.print_hit_stats()
-        self.print_timestamp_stats()     
+        self.print_timestamp_stats()
 
 @dataclass
 class Stats_v3(StatsBase):
@@ -147,7 +148,7 @@ class Stats_v3(StatsBase):
     hh_wo_match_count = 0
 
     def print_filtering_stats(self):
-        super().print_filtering_stats(self.hh_count)
+        super().print_filtering_stats()
         filtered_hh_col_count = self.filtered_packet_count - self.filtered_hh_row_count
         print(f'ratio of filtered column to row halfhits = {filtered_hh_col_count/self.filtered_hh_row_count if self.filtered_hh_row_count != 0 else np.inf} ({filtered_hh_col_count} col halfhits and {self.filtered_hh_row_count} row halfhits)')
 
@@ -171,4 +172,4 @@ class Stats_v3(StatsBase):
 
 @dataclass
 class Stats_v4(StatsBase):
-    pass
+    filtered_hit_count = 0

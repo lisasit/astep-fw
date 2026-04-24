@@ -1,27 +1,24 @@
 from __future__ import annotations
-from pathlib import Path
-from collections import deque
 from dataclasses import fields
-import h5py
 import numpy as np
-from tqdm import tqdm
 
 from .common import Stats_v4, DecoderSettings_v4
 from .decoder_base import DecoderBase
-from .hit_classes import Hit_v4, HIT_TYPE
-from .utils import make_nice_number, find_timestamp_difference
+from .hit_classes import Hit_v4
 
 class Decoder_v4(DecoderBase):
     def __init__(self, bin_filename, stats: Stats_v4, decoder_settings: DecoderSettings_v4):
         super().__init__(bin_filename, stats, decoder_settings)
-        self.hits: list[Hit_v4] = []
+        self.hits: list[Hit_v4]
+        self.stats: Stats_v4
+        self.decoder_settings: DecoderSettings_v4
 
-        self.past_t0 = False 
+        self.past_t0 = False
         self.last_fpga_ts = None
 
     def decode_iteration(self) -> bool:
         # one iteration of decoding. Returns True if more can be decoded and False if this is the last iteration
-        
+
         block = self.read_block()
         if block is None:
             return False
@@ -35,6 +32,7 @@ class Decoder_v4(DecoderBase):
         # Filter broken packets
         for decoded_packet in decoded_packets:
             if decoded_packet is not None:
+                self.stats.packet_count += 1
                 self.stats.hit_count += 1
 
                 if self.is_not_filtered_out(decoded_packet):
@@ -44,7 +42,7 @@ class Decoder_v4(DecoderBase):
         return True
 
     def check_packet(self, packet: bytes) -> bool:
-        return super().check_packet(packet, payload_length=7)
+        return super()._check_packet(packet, payload_length=7)
 
     def gray_to_dec(self, gray):
         """
@@ -95,7 +93,7 @@ class Decoder_v4(DecoderBase):
         ts2_dec = self.gray_to_dec((ts2 << 3) + ts2_fine) << 1 | (ts2_neg & self.decoder_settings.use_negedge_ts)
 
         if ts2_dec > ts1_dec:
-            tot_raw = ts2_dec - ts1_dec 
+            tot_raw = ts2_dec - ts1_dec
         else:
             tot_raw = 2**18 + ts2_dec - ts1_dec
 
@@ -114,5 +112,3 @@ class Decoder_v4(DecoderBase):
             self.root_file['hits'].extend(hit_dict)
 
         super().write_hits()
-
-    
