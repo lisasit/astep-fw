@@ -234,6 +234,11 @@ class DecoderBase:
 
     def is_not_filtered_out(self, decoded_packet: HalfHit_v3 | Hit_v4):
         # returns True if the hit/halfhit is good and False if it should be filtered out
+        # Ignore noise burst with FPGA timestamp zero
+        if decoded_packet.fpga_ts == 0:
+            self.stats.zero_ts_packet_count += 1
+            return False
+        # Check if past T0
         if self.decoder_settings.use_tlu and not self.past_t0:
             if self.last_fpga_ts is None:
                 # arbitrary: if the first FPGA ts is smaller than 1s, assume this is already after t0
