@@ -80,6 +80,7 @@ class StatsBase:
     skipped_byte_count = 0
     filtered_packet_count = 0
     before_t0_packet_count = 0
+    packet_count = 0
     hit_count = 0
     first_fpga_timestamp: float | None = None
     last_fpga_timestamp: float | None = None
@@ -112,8 +113,8 @@ class StatsBase:
     def print_block_stats(self):
         print(f'Average size of a readout block is {np.mean(self.block_lengths_total)}')
 
-    def print_filtering_stats(self, total_number):
-        print(f'{self.filtered_packet_count} packets were filtered out ({round(self.filtered_packet_count/total_number*100., 2) if total_number != 0 else np.inf}%), including {self.before_t0_packet_count} packets before the T0 signal')
+    def print_filtering_stats(self):
+        print(f'{self.filtered_packet_count} packets were filtered out ({round(self.filtered_packet_count/self.packet_count*100., 2) if self.packet_count != 0 else np.inf}%), including {self.before_t0_packet_count} packets before the T0 signal')
 
     def print_hit_stats(self):
         print(f'{self.hit_count} hits')
@@ -134,7 +135,7 @@ class StatsBase:
     def print(self):
         self.print_skipped_byte_stats()
         self.print_block_stats()
-        self.print_filtering_stats(self.hit_count)
+        self.print_filtering_stats()
         self.print_hit_stats()
         self.print_timestamp_stats()
 
@@ -146,7 +147,7 @@ class Stats_v3(StatsBase):
     hh_wo_match_count = 0
 
     def print_filtering_stats(self):
-        super().print_filtering_stats(self.hh_count)
+        super().print_filtering_stats()
         filtered_hh_col_count = self.filtered_packet_count - self.filtered_hh_row_count
         print(f'ratio of filtered column to row halfhits = {filtered_hh_col_count/self.filtered_hh_row_count if self.filtered_hh_row_count != 0 else np.inf} ({filtered_hh_col_count} col halfhits and {self.filtered_hh_row_count} row halfhits)')
 

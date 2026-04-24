@@ -95,6 +95,7 @@ class Decoder_v3(DecoderBase):
         # Filter broken packets
         for decoded_packet in decoded_packets:
             if decoded_packet is not None:
+                self.stats.packet_count += 1
                 self.stats.hh_count += 1
                 self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
                 if self.is_not_filtered_out(decoded_packet):
