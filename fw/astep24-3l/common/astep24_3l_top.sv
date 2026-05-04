@@ -368,6 +368,7 @@ module astep24_3l_top(
         .hk_ctrl_select_dac(hk_ctrl_select_dac),
         .hk_ctrl_spi_cpol(hk_ctrl_spi_cpol),
         .hk_ctrl_spi_cpha(hk_ctrl_spi_cpha),
+        .hk_ctrl_spi_msbfirst(hk_ctrl_spi_msbFirst),
         .hk_xadc_temperature(hk_xadc_temperature),
         .hk_xadc_temperature_write(hk_xadc_temperature_write),
         .hk_xadc_vccint(hk_xadc_vccint),
@@ -703,7 +704,7 @@ module astep24_3l_top(
             layer_0_cfg_ctrl_disable_miso
         }),
 
-        .config_payload_length(config_payload_length),
+        .config_payload_length(payload_length),
 
         // Statistics
         //----------------------
@@ -776,6 +777,7 @@ module astep24_3l_top(
         .ext_spi_mosi(ext_spi_mosi),
         .spi_cpol(hk_ctrl_spi_cpol),
         .spi_cpha(hk_ctrl_spi_cpha),
+        .spi_msbFirst(hk_ctrl_spi_msbFirst),
 
 
         .xadc_conversion_trigger(hk_conversion_trigger_interrupt),
@@ -788,9 +790,9 @@ module astep24_3l_top(
 
     // SPI Loopbacks
     //-----------------------
-    wire layer_0_loopback_csn = layer_0_spi_csn || !(layer_0_cfg_ctrl_loopback);
-    wire layer_1_loopback_csn = layer_1_spi_csn || !(layer_1_cfg_ctrl_loopback);
-    wire layer_2_loopback_csn = layer_2_spi_csn || !(layer_2_cfg_ctrl_loopback);
+    (*  DONT_TOUCH = "yes" *) wire layer_0_loopback_csn = layer_0_spi_csn || !(layer_0_cfg_ctrl_loopback);
+    (*  DONT_TOUCH = "yes" *) wire layer_1_loopback_csn = layer_1_spi_csn || !(layer_1_cfg_ctrl_loopback);
+    (*  DONT_TOUCH = "yes" *) wire layer_2_loopback_csn = layer_2_spi_csn || !(layer_2_cfg_ctrl_loopback);
 
 
 

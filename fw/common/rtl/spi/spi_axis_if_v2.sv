@@ -1,8 +1,6 @@
 `include "axi_ifs.sv"
 
-module spi_axis_if_v2 #(
-    parameter QSPI = 0,
-    parameter MSB_FIRST = 0  ) (
+module spi_axis_if_v2 #( parameter QSPI = 0) (
 
     // System clock
     input wire                    clk,
@@ -105,9 +103,9 @@ module spi_axis_if_v2 #(
 
     // This is a bit confusing, to output on posedge the logic runs during the negedge state
     wire        mosi_output = !stall_module && ( (cpha == 0 && cpol ==0  && spi_clock_state == A) ||
-                                (cpha == 0 && cpol == 1  && spi_clock_state == B) ||
+                                (cpha == 0 && cpol == 1  && spi_clock_state == A) ||
                                (cpha == 1 && cpol ==0  && spi_clock_state == B) ||
-                               (cpha == 1 && cpol ==1  && spi_clock_state == A) );
+                               (cpha == 1 && cpol ==1  && spi_clock_state == B) );
     wire        miso_sample = !stall_module && spi_clock_state != IDLE && !mosi_output;
 
     wire        mosi_can_take_next = (mosi_bit == 'd7 && spi_clock_state == B) ||spi_clock_state == IDLE ;
@@ -218,7 +216,7 @@ module spi_axis_if_v2 #(
                 // -----------
                 if (QSPI) begin
 
-                    if (MSB_FIRST) begin
+                    if (msb_first) begin
                         miso_byte           <= {miso_byte[5:0],spi_miso[1],spi_miso[0]};
                     end else begin
                         miso_byte           <= {spi_miso[1],spi_miso[0],miso_byte[7:2]};
@@ -232,7 +230,7 @@ module spi_axis_if_v2 #(
                 end
                 else begin
 
-                    if (MSB_FIRST) begin
+                    if (msb_first) begin
                         miso_byte           <= {miso_byte[6:0],spi_miso[0]};
                     end else begin
                         miso_byte           <= {spi_miso[0],miso_byte[7:1]};

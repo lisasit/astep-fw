@@ -7,6 +7,7 @@ from drivers.boards.board_driver import BoardDriver
 
 from .injector import Injector
 
+import os
 
 class CMODBoard(BoardDriver):
     def __init__(self, rfg):
@@ -16,18 +17,13 @@ class CMODBoard(BoardDriver):
         )  # Refactor to remove pointer to rfg and to BoardDriver
         self.injector = None
 
-    def selectUARTIO(self, portPath: str | None = None):
-        """This method is common to all targets now, because all targets have a USB-UART Converter available"""
-        if portPath is None:
-            from drivers.astep.serial import getSerialPort
+    
 
-            port = drivers.astep.serial.getSerialPort()
-            if port is None:
-                raise RuntimeError("No Serial Port could be listed")
-            else:
-                portPath = port.device
-        self.rfg.withUARTIO(portPath)
+    def selectSPIIO(self,path:str,gpioPath:str,csLine:int):
+        assert os.path.exists(path) , f"SPIDev {path} doesn't exist"
+        self.rfg.withSPIDEVIO(path,gpioPath,csLine)
         return self
+
 
     def getInjector(
         self, period=100, clkdiv=300, initdelay=100, cycle=0, ppset=1
