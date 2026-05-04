@@ -16,7 +16,7 @@ import yaml
 
 from constellation.core.configuration import Configuration
 from constellation.core.satellite import Satellite
-from constellation.core.message.cscp1 import SatelliteState
+from constellation.core.protocol.cscp1 import SatelliteState
 from constellation.core.monitoring import schedule_metric
 
 import drivers.boards
@@ -653,7 +653,7 @@ class ASTEP(Satellite):
 
 
     @async_run
-    async def do_run(self, payload: any) -> str:
+    async def do_run(self) -> str:
         ireadout = 0
         while not self._state_thread_evt.is_set():
             if not self.autoread:
