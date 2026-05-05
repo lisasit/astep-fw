@@ -8,6 +8,7 @@ import numpy as np
 class MatcherStrategy(Enum):
     ALL = 0
     CLOSEST = 1
+    CLOSEST_ROWFIRST = 2
 
 
 @dataclass
@@ -146,6 +147,7 @@ class Stats_v3(StatsBase):
     hh_row_count = 0
     filtered_hh_row_count = 0
     hh_wo_match_count = 0
+    hh_matches_count = 0
 
     def print_filtering_stats(self):
         super().print_filtering_stats()
@@ -157,6 +159,7 @@ class Stats_v3(StatsBase):
         hh_col_count = self.hh_count - self.hh_row_count
         print(f'ratio of column to row halfhits = {hh_col_count/self.hh_row_count if self.hh_row_count != 0 else np.inf} ({hh_col_count} col halfhits and {self.hh_row_count} row halfhits)')
         print(f'{self.hh_wo_match_count} halfhits had no match ({round(self.hh_wo_match_count/self.hh_count*100, 0) if self.hh_count != 0 else np.inf}%)')
+        print(f'found {self.hh_matches_count/self.hh_row_count if self.hh_row_count != 0 else 0} matches per halfhit on average')
 
     def print_hit_stats(self):
         super().print_hit_stats()

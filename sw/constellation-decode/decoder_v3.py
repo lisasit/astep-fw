@@ -47,25 +47,30 @@ class Decoder_v3(DecoderBase):
         # one iteration of decoding. Returns True if more can be decoded and False if this is the last iteration
         # loop for filling hh_to_match once
         while True:
-            # read and decode a block
+            # Quit if no more blocks left to decode
             if self.hh_to_fill is None:
                 break
+            # Read new blocks if fill queue is empty
             if len(self.hh_to_fill) == 0:
                 self.hh_to_fill = self.read_and_decode_next_block()
                 # check if we ran out of blocks in the binary file
                 if self.hh_to_fill is None:
                     break
-            # Check if the hh_to_match needs to be filled
+            # Fill matching queue from fill queue
             hh_to_match_full = False
             while self.hh_to_fill:
+                # Check if matching limit reached
                 hh = self.hh_to_fill[0]
                 if self.hh_to_match and float(find_timestamp_difference(hh.fpga_ts, self.hh_to_match[0].fpga_ts, self.decoder_settings.fpga_ts_length*8)) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
-                        hh_to_match_full = True
-                        break
+                    hh_to_match_full = True
+                    break
 
-                # Move halfthit to matching deque and to internal list of all halfhits
-                self.halfhits.append(self.hh_to_fill[0])
-                self.hh_to_match.append(self.hh_to_fill.popleft())
+                # Move halfthit from fill queue to matching deque and to internal list of all halfhits
+                self.halfhits.append(hh)
+                self.hh_to_match.append(hh)
+                self.hh_to_fill.popleft()
+
+            # Break loop if no more need to fill queue
             if hh_to_match_full:
                 break
 

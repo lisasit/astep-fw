@@ -11,46 +11,38 @@ class Matcher:
         self.stats = stats
         self.decoder_settings = decoder_settings
 
+        self.strategy = self.strategy_all
+        if self.decoder_settings.matcher_strategy == MatcherStrategy.CLOSEST:
+            self.strategy = self.strategy_closest
+        elif self.decoder_settings.matcher_strategy == MatcherStrategy.CLOSEST_ROWFIRST:
+            self.strategy = self.strategy_closest_rowfirst
+
     def match(self) -> list[Hit_v3]:
-        first_fpga_ts = self.hh_to_match[0].fpga_ts
-        hits: list[Hit_v3] = []
+        matches: list[MatchedHit_v3] = []
 
-        time = (self.hh_to_match[-1].fpga_ts - self.hh_to_match[0].fpga_ts) / self.decoder_settings.fpga_ts_clock_freq
+        # Take first hit in queue
+        hh = self.hh_to_match.popleft()
 
-        while self.hh_to_match:
-            matches: list[MatchedHit_v3] = []
-
-            # Check if we got a new trigger timestamp and need to refill deque
-            if self.hh_to_match[0].fpga_ts != first_fpga_ts:
-                break
-
-            hh = self.hh_to_match.popleft()
-
-            # Row halfhits arrive before column halfhits, thus we can skip them
-            if hh.is_col:
+        # Match to other halfhit
+        for other_hh in self.hh_to_match:
+            if hh.is_col == other_hh.is_col:
                 continue
-
-            # Match row halfhit
-            for other_hh in self.hh_to_match:
-                if not other_hh.is_col:
-                    continue
-                if not self.chip_check(hh, other_hh):
-                    continue
-                if not self.timestamp_check(hh.timestamp, other_hh.timestamp):
-                    continue
-                if not self.tot_check(hh, other_hh):
-                    continue
-                matches.append(self.make_matched_hit(hh, other_hh))
-
-            if not matches:
-                self.stats.hh_wo_match_count += 1
+            if not self.chip_check(hh, other_hh):
                 continue
+            if not self.timestamp_check(hh.timestamp, other_hh.timestamp):
+                continue
+            if not self.tot_check(hh, other_hh):
+                continue
+            matches.append(self.make_matched_hit(hh, other_hh))
 
-            # Select matches based on strategy
-            if self.decoder_settings.matcher_strategy == MatcherStrategy.CLOSEST:
-                hits += self.strategy_closest(matches)
-            else:
-                hits += self.strategy_all(matches)
+        # Select matches based on strategy
+        hits = self.strategy(matches)
+
+        # Check if halfhit was matched at some point
+        if hh.matches == 0:
+            self.stats.hh_wo_match_count += 1
+        else:
+            self.stats.hh_matches_count += hh.matches
 
         return hits
 
@@ -74,32 +66,47 @@ class Matcher:
             return False
         return True
 
-    def make_matched_hit(self, row_hh: HalfHit_v3, col_hh: HalfHit_v3) -> MatchedHit_v3:
-        return MatchedHit_v3(
-            row_hh.location,
-            col_hh.location,
-            row_hh.fpga_ts,
-            col_hh.fpga_ts,
-            row_hh.tot_raw,
-            col_hh.tot_raw,
-            row_hh.index,
-            col_hh.index,
-            row_hh.timestamp,
-            col_hh.timestamp,
-            row_hh.chip_id,
-            row_hh.layer
-        )
+    def make_matched_hit(self, hh: HalfHit_v3, other_hh: HalfHit_v3) -> MatchedHit_v3:
+        row_hh, col_hh = (hh, other_hh) if other_hh.is_col else (other_hh, hh)
+        return MatchedHit_v3(row_hh, col_hh)
 
-    def convert_hit(self, hit: MatchedHit_v3) -> Hit_v3:
-        # Take the row timestamp since it is read out first
+    def make_hit(self, hit: MatchedHit_v3) -> Hit_v3:
+        # Mark halfhits as matched
+        hit.row_hh.matches += 1
+        hit.col_hh.matches += 1
+
+        # Take the earlier FPGA timestamp
+        fpga_ts = min(hit.row_hh.fpga_ts, hit.col_hh.fpga_ts)
         # Take the average ToT
-        hit_tot_raw = round((hit.tot_col + hit.tot_row) / 2)
-        return Hit_v3(hit.row, hit.col, hit.fpga_ts_row, hit_tot_raw, hit_tot_raw*self.decoder_settings.sample_clock_period_ns, hit.timestamp_row, hit.chip_id, hit.layer)
+        hit_tot_raw = round((hit.row_hh.tot_raw + hit.col_hh.tot_raw) / 2)
+        # Take the average chip timestamp
+        hit_timestamp = round((hit.row_hh.timestamp + hit.col_hh.timestamp) / 2)
+
+        return Hit_v3(
+            hit.row_hh.location,
+            hit.col_hh.location,
+            fpga_ts, hit_tot_raw,
+            hit_tot_raw*self.decoder_settings.sample_clock_period_ns,
+            hit_timestamp,
+            hit.row_hh.chip_id,
+            hit.row_hh.layer,
+        )
 
     def strategy_all(self, matches: list[MatchedHit_v3]) -> list[Hit_v3]:
         # Pick all hits
-        return [self.convert_hit(hit) for hit in matches]
+        return [self.make_hit(hit) for hit in matches]
 
     def strategy_closest(self, matches: list[MatchedHit_v3]) -> list[Hit_v3]:
         # Pick the hit where the halfhits are the closest to each other (in terms of readout sequence)
-        return [self.convert_hit(min(matches, key=lambda match: match.index_col - match.index_row))]
+        if matches:
+            # TODO: what if there are two with same position diff ??? E.g. +1 and -1 -> use best in that case?
+            return [self.make_hit(min(matches, key=lambda match: abs(match.col_hh.index - match.row_hh.index)))]
+        return []
+
+    def strategy_closest_rowfirst(self, matches: list[MatchedHit_v3]) -> list[Hit_v3]:
+        # Like strategy_closest but only consider matches where the row halfhit arrived before the column halfhit
+        filtered_matches: list[MatchedHit_v3] = []
+        for match in matches:
+            if match.row_hh.index < match.col_hh.index:
+                filtered_matches.append(match)
+        return self.strategy_closest(filtered_matches)

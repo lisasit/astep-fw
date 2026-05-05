@@ -1,4 +1,4 @@
-from dataclasses import dataclass 
+from dataclasses import dataclass
 import numpy as np
 
 HIT_TYPE = np.dtype([
@@ -24,22 +24,13 @@ class HalfHit_v3:
     fpga_ts: int
     index: int
     readout_id: int
+    matches: int = 0
 
 
 @dataclass
 class MatchedHit_v3:
-    row: int
-    col: int
-    fpga_ts_row: int
-    fpga_ts_col: int
-    tot_row: int
-    tot_col: int
-    index_row: int
-    index_col: int
-    timestamp_row: int 
-    timestamp_col: int 
-    chip_id: int 
-    layer: int
+    row_hh: HalfHit_v3
+    col_hh: HalfHit_v3
 
 
 @dataclass
@@ -49,9 +40,9 @@ class Hit_v3:
     fpga_ts: int
     tot_raw: int
     tot_us: float
-    timestamp: int 
-    chip_id: int 
-    layer: int 
+    timestamp: int
+    chip_id: int
+    layer: int
 
 @dataclass
 class Hit_v4:
@@ -60,10 +51,9 @@ class Hit_v4:
     fpga_ts: int
     tot_raw: int
     tot_us: float
-    ts1: int 
+    ts1: int
     ts2: int
-    chip_id: int 
+    chip_id: int
     layer: int
     payload: int
     packet_length: int
-
