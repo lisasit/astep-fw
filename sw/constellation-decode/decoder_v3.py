@@ -104,11 +104,12 @@ class Decoder_v3(DecoderBase):
                 self.stats.hh_count += 1
                 self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
                 if self.is_not_filtered_out(decoded_packet):
-                    if not decoded_packet.is_col:
-                        if self.last_hh_chip_ts is not None and self.last_hh_chip_ts > decoded_packet.timestamp:
-                            self.chip_ts_overflow += 2**8
-                        self.last_hh_chip_ts = decoded_packet.timestamp
-                    decoded_packet.timestamp += self.chip_ts_overflow
+                    if self.decoder_settings.add_chip_timestamp_overflow:
+                        if not decoded_packet.is_col:
+                            if self.last_hh_chip_ts is not None and self.last_hh_chip_ts > decoded_packet.timestamp:
+                                self.chip_ts_overflow += 2**8
+                            self.last_hh_chip_ts = decoded_packet.timestamp
+                        decoded_packet.timestamp += self.chip_ts_overflow
                     result.append(decoded_packet)
                 else:
                     self.stats.filtered_packet_count += 1

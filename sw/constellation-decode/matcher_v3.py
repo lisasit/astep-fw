@@ -11,6 +11,8 @@ class Matcher:
         self.stats = stats
         self.decoder_settings = decoder_settings
 
+        self.chip_timestamp_size = 8 if self.decoder_settings.add_chip_timestamp_overflow else 2
+
         self.strategy = self.strategy_all
         if self.decoder_settings.matcher_strategy == MatcherStrategy.CLOSEST:
             self.strategy = self.strategy_closest
@@ -54,7 +56,7 @@ class Matcher:
         return True
 
     def timestamp_check(self, ts1: int, ts2: int) -> bool:
-        timestamp_difference = find_timestamp_difference(ts1, ts2, 8)
+        timestamp_difference = find_timestamp_difference(ts1, ts2, self.chip_timestamp_size)
         if timestamp_difference > self.decoder_settings.matcher_ts_limit:
             return False
         return True
