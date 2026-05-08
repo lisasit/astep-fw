@@ -5,18 +5,18 @@ from .decoder_v3 import Decoder_v3
 from .decoder_v4 import Decoder_v4
 from .common import DecoderSettings_v3, DecoderSettings_v4, Stats_v3, Stats_v4, MatcherStrategy
 
-def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchips_per_layer, nlayers, outdir, max_readout_blocks, write_strip_files, matcher_strategy, use_tlu):
+def decode(args, filename, file_extensions, matcher_strategy):
     os.makedirs('/'.join(filename.split('/')[:-1]), exist_ok=True)
 
-    if outdir is None:
+    if args.outdir is None:
         name_output = filename.replace('raw_data', 'decoded')
     else:
-        name_output = outdir
+        name_output = args.outdir
         if not name_output.endswith('/'):
             name_output += '/'
         name_output += filename.split('/')[-1]
 
-    if not force:
+    if not args.force:
         all_files_exist = True
         for file_extension in file_extensions:
             if not os.path.exists(name_output.replace('.bin', file_extension)):
@@ -25,33 +25,34 @@ def decode(filename, force, file_extensions, chip_version, fpga_ts_length, nchip
             print(f'File decoded with all ({file_extensions}) extensions, skipping')
             return
 
-    if chip_version == 3:
+    if args.version == 3:
         stats = Stats_v3()
         decoder_settings = DecoderSettings_v3(
-            nlayers=nlayers,
-            nchips_per_layer=nchips_per_layer,
-            fpga_ts_length=fpga_ts_length,
+            nlayers=args.nlayers,
+            nchips_per_layer=args.nchips_per_layer,
+            fpga_ts_length=args.fpga_ts_length,
             fpga_ts_clock_freq=80e6,
             fpga_ts_packet_filter_limit = None,#100000, # 100ks aka ~28h
             fpga_ts_matching_limit=args.matcher_time_window,
             matcher_strategy=matcher_strategy,
             matcher_ts_limit=args.matcher_ts_limit,
             matcher_tot_limit=args.matcher_tot_limit,
-            max_readout_blocks=max_readout_blocks,
-            write_strip_files=write_strip_files,
-            use_tlu=use_tlu
+            add_chip_timestamp_overflow=args.add_chip_timestamp_overflow,
+            max_readout_blocks=args.max_readout_blocks,
+            write_strip_files=args.write_strip_files,
+            use_tlu=args.use_tlu,
         )
         d = Decoder_v3(filename, stats, decoder_settings)
     else:
         stats = Stats_v4()
         decoder_settings = DecoderSettings_v4(
-            nlayers=nlayers,
-            nchips_per_layer=nchips_per_layer,
-            fpga_ts_length=fpga_ts_length,
+            nlayers=args.nlayers,
+            nchips_per_layer=args.nchips_per_layer,
+            fpga_ts_length=args.fpga_ts_length,
             fpga_ts_clock_freq=80e6,
             fpga_ts_packet_filter_limit = None,#100000, # 100ks aka ~28h
-            max_readout_blocks=max_readout_blocks,
-            use_tlu=use_tlu
+            max_readout_blocks=args.max_readout_blocks,
+            use_tlu=args.use_tlu,
         )
         d = Decoder_v4(filename, stats, decoder_settings)
     if '.root' in file_extensions:
@@ -81,10 +82,15 @@ def main(args):
         print(f'Decoding directory {args.dir}')
         filenames = [f'{args.dir}/{filename}' for filename in os.listdir(args.dir) if filename.endswith('.bin')]
 
-    if args.closest:
-        matcher_strategy = MatcherStrategy.CLOSEST
-    else:
+    if args.matcher_strategy == 'all':
         matcher_strategy = MatcherStrategy.ALL
+    elif args.matcher_strategy == 'closest':
+        matcher_strategy = MatcherStrategy.CLOSEST
+    elif args.matcher_strategy == 'closest_rowfirst':
+        matcher_strategy = MatcherStrategy.CLOSEST_ROWFIRST
+    else:
+        print('Invalid matcher strategy, use either `all`, `closest` or `closest_rowfirst`')
+        return
 
     for filename in filenames:
         print(f'Decoding file {filename}')
@@ -93,7 +99,7 @@ def main(args):
             file_extensions.append('.h5')
         if args.root:
             file_extensions.append('.root')
-        decode(filename, args.force, file_extensions, args.version, fpga_ts_length=args.fpga_ts_length, nchips_per_layer=args.nchips_per_layer, nlayers=args.nlayers, outdir=args.outdir, max_readout_blocks=args.max_readout_blocks, write_strip_files=args.write_strip_files, matcher_strategy=matcher_strategy, use_tlu=args.use_tlu)
+        decode(args, filename, file_extensions, matcher_strategy)
 
 
 if __name__ == "__main__":
@@ -113,10 +119,11 @@ if __name__ == "__main__":
     parser.add_argument('-m', '--max-readout-blocks', required=False, help='Max number of readout blocks to process (for debugging mostly)', type=int, default=None)
     parser.add_argument('-s', '--write-strip-files', required=False, action="store_true", default=False, help="Save the \"strip\" h5 files, where row and column halfhits are treated as hits in two separate strip detectors")
     parser.add_argument('-t', '--use-tlu', required=False, action="store_true", default=False, help="Flag to indicate that the TLU was used. This means that the FPGA timestamp does not grow monotonously, but drops to 0 when the T0 signal from the TLU is received")
-    parser.add_argument('-c', '--closest', required=False, action="store_true", default=False, help="Strategy to use for matching (v3 only). If used, the CLOSEST strategy will be used, otherwise the ALL strategy will be used")
+    parser.add_argument('--matcher-strategy', required=False, type=str, default='all', help="Strategy to use for matching (v3 only)")
     parser.add_argument('--matcher-ts-limit', required=False, type=int, default=2, help="Maximum chip timestamp difference in clock cycles for matching (v3 only)")
     parser.add_argument('--matcher-tot-limit', required=False, default=None, type=float, help="Relative ToT limit for matching (v3 only). If used, only halfhits whose ToT deviates at most by the given limit will be considerd for matching, otherwise ToT matching is disabled")
     parser.add_argument('--matcher-time-window', required=False, type=float, default=3e-3, help="Time window for matching in seconds (v3 only)")
+    parser.add_argument('--add-chip-timestamp-overflow', required=False, action="store_true", default=False, help="Enable adding overflow to the chip timestamp (v3 only")
 
     args = parser.parse_args()
     main(args)

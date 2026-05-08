@@ -47,25 +47,30 @@ class Decoder_v3(DecoderBase):
         # one iteration of decoding. Returns True if more can be decoded and False if this is the last iteration
         # loop for filling hh_to_match once
         while True:
-            # read and decode a block
+            # Quit if no more blocks left to decode
             if self.hh_to_fill is None:
                 break
+            # Read new blocks if fill queue is empty
             if len(self.hh_to_fill) == 0:
                 self.hh_to_fill = self.read_and_decode_next_block()
                 # check if we ran out of blocks in the binary file
                 if self.hh_to_fill is None:
                     break
-            # Check if the hh_to_match needs to be filled
+            # Fill matching queue from fill queue
             hh_to_match_full = False
             while self.hh_to_fill:
+                # Check if matching limit reached
                 hh = self.hh_to_fill[0]
                 if self.hh_to_match and float(find_timestamp_difference(hh.fpga_ts, self.hh_to_match[0].fpga_ts, self.decoder_settings.fpga_ts_length*8)) / self.decoder_settings.fpga_ts_clock_freq > self.decoder_settings.fpga_ts_matching_limit:
-                        hh_to_match_full = True
-                        break
+                    hh_to_match_full = True
+                    break
 
-                # Move halfthit to matching deque and to internal list of all halfhits
-                self.halfhits.append(self.hh_to_fill[0])
-                self.hh_to_match.append(self.hh_to_fill.popleft())
+                # Move halfthit from fill queue to matching deque and to internal list of all halfhits
+                self.halfhits.append(hh)
+                self.hh_to_match.append(hh)
+                self.hh_to_fill.popleft()
+
+            # Break loop if no more need to fill queue
             if hh_to_match_full:
                 break
 
@@ -99,11 +104,12 @@ class Decoder_v3(DecoderBase):
                 self.stats.hh_count += 1
                 self.stats.hh_row_count += 0 if decoded_packet.is_col else 1
                 if self.is_not_filtered_out(decoded_packet):
-                    if not decoded_packet.is_col:
-                        if self.last_hh_chip_ts is not None and self.last_hh_chip_ts > decoded_packet.timestamp:
-                            self.chip_ts_overflow += 2**8
-                        self.last_hh_chip_ts = decoded_packet.timestamp
-                    decoded_packet.timestamp += self.chip_ts_overflow
+                    if self.decoder_settings.add_chip_timestamp_overflow:
+                        if not decoded_packet.is_col:
+                            if self.last_hh_chip_ts is not None and self.last_hh_chip_ts > decoded_packet.timestamp:
+                                self.chip_ts_overflow += 2**8
+                            self.last_hh_chip_ts = decoded_packet.timestamp
+                        decoded_packet.timestamp += self.chip_ts_overflow
                     result.append(decoded_packet)
                 else:
                     self.stats.filtered_packet_count += 1

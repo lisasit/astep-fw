@@ -8,6 +8,7 @@ import numpy as np
 class MatcherStrategy(Enum):
     ALL = 0
     CLOSEST = 1
+    CLOSEST_ROWFIRST = 2
 
 
 @dataclass
@@ -54,6 +55,8 @@ class DecoderSettings_v3(DecoderSettingsBase):
     matcher_ts_limit: int = 2
     # Maximum relative ToT deviation for matching
     matcher_tot_limit: float | None = None
+    # Add chip timestamp overflow from halfhit index
+    add_chip_timestamp_overflow: bool = False
     # Flag to save h5 files for row and column halfhits separately
     write_strip_files: bool = False
 
@@ -64,6 +67,7 @@ class DecoderSettings_v3(DecoderSettingsBase):
         print(f'    {"ALL" if self.matcher_strategy == MatcherStrategy.ALL else "CLOSEST"} matching strategy is used')
         print(f'    Max on-chip timestamp difference between halfhits in a hit is {self.matcher_ts_limit} clock cycles')
         print(f'    Max ToT difference between halfhits in a hit is {"ignored" if self.matcher_tot_limit is None else str(self.matcher_tot_limit*100)+"%"}')
+        print(f'    Chip timestamp overflow was{" " if self.add_chip_timestamp_overflow else " not"} added')
         print(f'    "Strip" files were {"" if self.write_strip_files else "not "}written')
 
 @dataclass
@@ -146,6 +150,7 @@ class Stats_v3(StatsBase):
     hh_row_count = 0
     filtered_hh_row_count = 0
     hh_wo_match_count = 0
+    hh_matches_count = 0
 
     def print_filtering_stats(self):
         super().print_filtering_stats()
@@ -157,6 +162,7 @@ class Stats_v3(StatsBase):
         hh_col_count = self.hh_count - self.hh_row_count
         print(f'ratio of column to row halfhits = {hh_col_count/self.hh_row_count if self.hh_row_count != 0 else np.inf} ({hh_col_count} col halfhits and {self.hh_row_count} row halfhits)')
         print(f'{self.hh_wo_match_count} halfhits had no match ({round(self.hh_wo_match_count/self.hh_count*100, 0) if self.hh_count != 0 else np.inf}%)')
+        print(f'found {self.hh_matches_count/self.hh_row_count if self.hh_row_count != 0 else 0} matches per halfhit on average')
 
     def print_hit_stats(self):
         super().print_hit_stats()
