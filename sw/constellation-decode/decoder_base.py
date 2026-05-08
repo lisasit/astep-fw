@@ -103,6 +103,8 @@ class DecoderBase:
 
         self.constellation_config_filename = find_fitting_file('toml')
         self.chip_config_filenames = [find_fitting_file('yml')]
+        if self.chip_config_filenames[0] is None:
+            self.chip_config_filenames = None
 
 
     def read_configs(self):
