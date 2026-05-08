@@ -217,12 +217,12 @@ class ASTEP(Satellite):
                 for col in self.injection_col:
                     self.log.info(f'Enabling injection column {col}')
                     self.boardDriver.asics[self.injection_layer].enable_inj_col(
-                        self.injection_chip, col, inplace=False
+                        self.injection_chip, col
                     )
                 for row in self.injection_row:
                     self.log.info(f'Enabling injection row {row}')
                     self.boardDriver.asics[self.injection_layer].enable_inj_row(
-                        self.injection_chip, row, inplace=False
+                        self.injection_chip, row
                     )
                 for col in self.injection_col:
                     for row in self.injection_row:
@@ -230,7 +230,6 @@ class ASTEP(Satellite):
                             chip=self.injection_chip,
                             col=col,
                             row=row,
-                            inplace=False,
                         )
                 # Priority to command line, defaults to yaml - already in vdac units
                 if self.injection_voltage is not None:
@@ -305,6 +304,9 @@ class ASTEP(Satellite):
         if self.use_shift_register:
             for layer in range(self.nlayers):
                 await self.boardDriver.writeSRAsicConfig(lane=layer, ckdiv=16)
+                if self.chip_version == 4:
+                    self.log.info('Writing TDAC configuration')
+                    await self.boardDriver.writeSRAsicTDACConfig(lane=layer, ckdiv=16)
         else:
             # Set chip IDs
             await self.boardDriver.layersSelectSPI(flush=True)  # Set chipSelect
@@ -319,8 +321,17 @@ class ASTEP(Satellite):
                         load=True,
                         n_load=10,
                         broadcast=False,
-                        targetChip=ichip,
-                    )  # Set chipSelect
+                        targetChip=ichip
+                    ) 
+                    if self.chip_version == 4:
+                        await self.boardDriver.writeSPIAsicConfig(
+                            lane=layer,
+                            load=True,
+                            n_load=10,
+                            broadcast=False,
+                            targetChip=ichip,
+                            tdac=True
+                        )  # Set chipSelect
                     # payload = self.boardDriver.asics[layer].createSPIConfigFrame(
                     #    load=True, n_load=10, broadcast=False, targetChip=ichip
                     # )
@@ -392,7 +403,7 @@ class ASTEP(Satellite):
         await self.setup_injection()
 
         self.boardDriver.asics[self.analog_layer].enable_ampout_col(
-            self.analog_chip, self.analog_col, inplace=False
+            self.analog_chip, self.analog_col
         )
 
         await self.write_configuration()
@@ -497,8 +508,14 @@ class ASTEP(Satellite):
         # injection parameters
 
         call_setup_injection = False
-        prev_injection_row = self.injection_row.copy()
-        prev_injection_col = self.injection_col.copy()
+        if self.injection_row is not None:
+            prev_injection_row = self.injection_row.copy()
+        else:
+            prev_injection_row = None
+        if self.injection_col is not None:
+            prev_injection_col = self.injection_col.copy()
+        else:
+            prev_injection_col = None
         if "injection_row" in partial_config.get_keys():
             self.injection_row = partial_config["injection_row"]
             call_setup_injection = True
@@ -582,7 +599,7 @@ class ASTEP(Satellite):
 
         if call_enable_ampout or call_setup_clocks or call_setup_asics:
             self.boardDriver.asics[self.analog_layer].enable_ampout_col(
-                self.analog_chip, self.analog_col, inplace=False
+                self.analog_chip, self.analog_col
             )
             self.log.info(
                 f"New analog output layer {self.analog_layer}, chip {self.analog_chip}, column {self.analog_col}"
@@ -699,6 +716,9 @@ class ASTEP(Satellite):
                 dicttofile[asic.chip][f"config_{chip}"] = asic.asic_config[
                     f"config_{chip}"
                 ]
+
+            if self.chip_version == 4:
+                dicttofile[asic.chip][f"tdac_config_{chip}"] = asic.asic_tdac_config[f"tdac_config_{chip}"]
 
             with open(f"{filename}", "w", encoding="utf-8") as stream:
                 try:
