@@ -1,13 +1,13 @@
 import sys
 sys.path.append('../astropix-python')
 
-from constellation.ASTEP import ASTEP
+# from constellation.ASTEP import ASTEP
 import argparse
 import threading
 import time
-from constellation.core.configuration import load_config
 from constellation.core.controller import ScriptableController
-from constellation.core.message.cscp1 import SatelliteState
+from constellation.core.controller_configuration import load_config
+from constellation.core.protocol.cscp1 import SatelliteState
 import os
 from tqdm import tqdm
 from itertools import product
@@ -16,7 +16,7 @@ import toml
 def main(args):
     cfg = load_config(args.config)
     group_name = "astropix"
-    n_satellites = 1
+    n_satellites = 4
     ctrl = ScriptableController(group_name)
     constellation = ctrl.constellation
 
@@ -36,27 +36,33 @@ def main(args):
     ## This is the only place where changes need to be made for different parameter scans
     ###################
 
+    chip_configs = [["singlechip_v4_allmasked_test"]]
+    # for trim in range(8):
+    #     for vpdac in [5]:
+    #         chip_configs.append([f"singlechip_v4_allmasked_trim{trim}_vpdac_{vpdac}"])
+
+
     # parameters to iterate over
     parameters = {
         # 'injection_row' : range(35),
         # 'injection_col' : range(3, 35),
-        'threshold' : [1300, 1500],
-        # 'injection_voltage' : [300, 400, 500]
-        'chip_configs' : [["singlechip_nmos_noisymasked"]]
+        'threshold' : [1420],#[1150 + i*10 for i in range((1600 - 1150)//10 + 1)],
+        'injection_voltage' : [400],
+        'chip_configs' : chip_configs
     }
 
     # time to stay at each parameter
-    wait_time = 5*60
+    wait_time = 2#5*60
 
     # directory for the output files
-    output_directory_format = '/media/teleuser/4TB/astropix/sr90_astep/data/raw_data'
+    output_directory_format = '/home/octouser/astropix/lab_scans/v4_measurements/trimming1/raw_data'
 
     # output files will be located in this directory with names
     # key1_value1_key2_value2_ ... _date_and_time.bin
     # key and value pairs will be taken from the parameters dictionary and ordered alphabetically
 
     outfile_prefix_format = '_'.join(f'{key}_{{{key}}}' for key in sorted(parameters.keys()))
-    outfile_prefix_format = 'bias200'
+    # outfile_prefix_format = 'bias200'
 
     ###########################################
     ## End of place to edit parameters
@@ -99,16 +105,16 @@ def main(args):
         os.makedirs(recfg['outdir'], exist_ok=True)
         constellation.ASTEP.reconfigure(recfg)
         time.sleep(0.5)
-        cfg['satellites']['ASTEP'].update(recfg)
+        # cfg['satellites']['ASTEP'].update(recfg)
 
         # Wait until ll states are back in the ORBIT state
         ctrl.await_state(SatelliteState.ORBIT)
 
         time_config=time.strftime("%Y%m%d-%H%M%S")
-        tomlpathout = cfg['satellites']['ASTEP']['outdir'] + '/AstroPix_Constellation_' + time_config + '.toml'
-        with open(tomlpathout, 'w') as toml_file:
+        # tomlpathout = cfg['satellites']['ASTEP']['outdir'] + '/AstroPix_Constellation_' + time_config + '.toml'
+        # with open(tomlpathout, 'w') as toml_file:
             # toml_file.write(f'[satellites.{self.name}]\n')
-            toml.dump(cfg, toml_file)
+            # toml.dump(cfg, toml_file)
         constellation.start(time_config)
         ctrl.await_state(SatelliteState.RUN)
 
