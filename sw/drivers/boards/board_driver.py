@@ -302,15 +302,20 @@ class BoardDriver:
         ## Generate Bit vector for config
         ## If limit is used, retain only a few bits from the resuklt
         bits = self.getAsic(lane).getConfigBits(msbfirst=False,limit=limit,tdac=tdac)
-
+        
         logger.info("Writing SR Config for row=%d,len=%d,tdac=%s", lane, len(bits), tdac)
+        if tdac:
+            print(f"Bits = {bits}")
 
         ## Save target register for the write here - this can be easily updated in case some hardware platforms have different names for registers
         targetRegister = self.rfg.Registers["LAYERS_SR_OUT"]
 
         ## Write to SR using register
         sinValue = 0
+
         for bit in bits:
+        # if tdac:
+        #     print(f"bit = {bit}")
             # SIN (bit 3 in register)
             sinValue = (1 if bit else 0) << 2
             self.rfg.addWrite(
@@ -334,12 +339,89 @@ class BoardDriver:
             loadbit = lane + 6
         else:
             loadbit = lane + 3
+        if tdac:
+            print(f"Loadbit = {loadbit}")
         self.rfg.addWrite(
             register=targetRegister, value=sinValue | (0x1 << loadbit), repeat=ckdiv
         )
         self.rfg.addWrite(register=targetRegister, value=0, repeat=ckdiv)
 
         await self.rfg.flush()
+
+    async def writeSRAsicTDACConfig(self, lane: int = 0, ckdiv=32, limit: int | None = None):
+        """
+        Write ASIC Config via Shift Register - This method must write configuration for at least all the chips until the target chip
+        In this first new version, it will always write configuration for all the Chips.
+
+            Args:
+                ckdiv(int) : Repeats the write for ck1/ck2/load ckdiv times to strech the signal. Set this value higher for faster software interface
+                limit(int) : Only write limit bits to SR - Mostly useful in simulation to limit runtime which checking the I/O are correctly driven
+
+        """
+
+        ## Generate Bit vector for config
+        ## If limit is used, retain only a few bits from the resuklt
+        print('Writing TDAC config in board driver')
+        for row in range(1):#12, -1, -1):
+            bits = self.getAsic(lane).getConfigBits(msbfirst=False,limit=limit,tdac=True, row=row)
+            
+            logger.info("Writing SR TDAC Config for row=%d,len=%d,tdac=%s", lane, len(bits))
+            print(f'Row {row} bits {bits}')
+            if len(bits) < 80:
+                bits.prepend(BitArray(length=80 - len(bits)))
+
+            ## Save target register for the write here - this can be easily updated in case some hardware platforms have different names for registers
+            targetRegister = self.rfg.Registers["LAYERS_SR_OUT"]
+
+            ## Write to SR using register
+            sinValue = 0
+
+            # bitbackup = bits.copy()
+            # bitmask = BitArray('0b' + '01111'*16)
+            # bitbackup &= bitmask
+            # for irow in range(13):
+            #     enable_write = BitArray('0b' + '00000'*(15 - irow) + '10000' + '00000'*irow)
+            #     should_write = (bits & enable_write).int
+            #     if not should_write:
+            #         continue 
+            #     else:
+            #         print('Writing')
+            #     bits_to_write = bitbackup | enable_write
+            bits_to_write = bits
+            print(f'row {row}, bits {bits_to_write}')
+            # print('Should write?', should_write)
+            # print(f'bits = {bits}, enable_write = {enable_write}')
+            for bit in bits_to_write:
+            # if tdac:
+            #     print(f"bit = {bit}")
+                # SIN (bit 3 in register)
+                sinValue = (1 if bit else 0) << 2
+                self.rfg.addWrite(
+                    register=targetRegister, value=sinValue, repeat=ckdiv
+                )  # ensure SIN has higher delay than CLK1 to avoid setup violation / incorrect sampling
+
+                # CK1
+                self.rfg.addWrite(
+                    register=targetRegister, value=sinValue | 0x1, repeat=ckdiv
+                )
+                self.rfg.addWrite(register=targetRegister, value=sinValue, repeat=ckdiv)
+
+                # CK2
+                self.rfg.addWrite(
+                    register=targetRegister, value=sinValue | 0x2, repeat=ckdiv
+                )
+                self.rfg.addWrite(register=targetRegister, value=sinValue, repeat=ckdiv)
+
+            ## Set Load (loads start bit 4) for the correct lane
+            loadbit = lane + 6
+            print(f"Loadbit = {loadbit}")
+            self.rfg.addWrite(
+                register=targetRegister, value=sinValue | (0x1 << loadbit), repeat=ckdiv
+            )
+            self.rfg.addWrite(register=targetRegister, value=0, repeat=ckdiv)
+
+            await self.rfg.flush()
+            time.sleep(1)   
 
     async def writeSPIAsicConfig(
         self,
@@ -349,6 +431,7 @@ class BoardDriver:
         broadcast: bool = False,
         targetChip: int = 0,
         config: BitArray | None = None,
+        tdac: bool = False
     ):
         # Get SPI Frame Configs
         spiBytes = self.getAsic(lane).getSPIConfigFrame(
@@ -357,6 +440,7 @@ class BoardDriver:
             broadcast=broadcast,
             targetChip=targetChip,
             config=config,
+            tdac=tdac
         )
 
         # Write all configs

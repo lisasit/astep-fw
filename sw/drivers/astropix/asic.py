@@ -468,7 +468,7 @@ class Asic:
 
         return chipTDACConfigs
         
-    def getConfigBits(self, msbfirst: bool = False, targetChip: int = -1, limit:int|None = None, tdac: bool = False ) -> BitArray:
+    def getConfigBits(self, msbfirst: bool = False, targetChip: int = -1, limit:int|None = None, tdac: bool = False, row: int = 0 ) -> BitArray:
         """
         Generate asic bitvector from digital, bias and dacconfig.
         Use this method to get the List of Shift Register Config bits for one or multiple astropix in a daisychain
@@ -481,7 +481,7 @@ class Asic:
             targetChip(int,optional): Returns only the bits for the selected Astropix - if set to -1, returns for all the Astropix - no effect if the configuration is not multichip
         """
         if tdac:
-            configs = self.getChipsTDACConfigs(msbfirst=msbfirst,targetChip=targetChip)
+            configs = self.getChipsTDACConfigs(row=row, msbfirst=msbfirst,targetChip=targetChip)
         else:
             configs = self.getChipsConfigs(msbfirst=msbfirst,targetChip=targetChip)
 
