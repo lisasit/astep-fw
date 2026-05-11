@@ -348,7 +348,7 @@ class BoardDriver:
 
         await self.rfg.flush()
 
-    async def writeSRAsicTDACConfig(self, lane: int = 0, ckdiv=32, limit: int | None = None):
+    async def writeSRAsicTDACConfig(self, lane: int = 0, ckdiv=4, limit: int | None = None):
         """
         Write ASIC Config via Shift Register - This method must write configuration for at least all the chips until the target chip
         In this first new version, it will always write configuration for all the Chips.
@@ -362,7 +362,8 @@ class BoardDriver:
         ## Generate Bit vector for config
         ## If limit is used, retain only a few bits from the resuklt
         print('Writing TDAC config in board driver')
-        for row in range(1):#12, -1, -1):
+        bitmask_nowrite = BitArray('0b' + '01111'*16)
+        for row in range(5):#, -1, -1):
             bits = self.getAsic(lane).getConfigBits(msbfirst=False,limit=limit,tdac=True, row=row)
             
             logger.info("Writing SR TDAC Config for row=%d,len=%d,tdac=%s", lane, len(bits))
@@ -373,55 +374,59 @@ class BoardDriver:
             ## Save target register for the write here - this can be easily updated in case some hardware platforms have different names for registers
             targetRegister = self.rfg.Registers["LAYERS_SR_OUT"]
 
-            ## Write to SR using register
-            sinValue = 0
+            for i in range(2):
+                ## Write to SR using register
+                sinValue = 0
 
-            # bitbackup = bits.copy()
-            # bitmask = BitArray('0b' + '01111'*16)
-            # bitbackup &= bitmask
-            # for irow in range(13):
-            #     enable_write = BitArray('0b' + '00000'*(15 - irow) + '10000' + '00000'*irow)
-            #     should_write = (bits & enable_write).int
-            #     if not should_write:
-            #         continue 
-            #     else:
-            #         print('Writing')
-            #     bits_to_write = bitbackup | enable_write
-            bits_to_write = bits
-            print(f'row {row}, bits {bits_to_write}')
-            # print('Should write?', should_write)
-            # print(f'bits = {bits}, enable_write = {enable_write}')
-            for bit in bits_to_write:
-            # if tdac:
-            #     print(f"bit = {bit}")
-                # SIN (bit 3 in register)
-                sinValue = (1 if bit else 0) << 2
-                self.rfg.addWrite(
-                    register=targetRegister, value=sinValue, repeat=ckdiv
-                )  # ensure SIN has higher delay than CLK1 to avoid setup violation / incorrect sampling
+                # bitbackup = bits.copy()
+                # bitmask = BitArray('0b' + '01111'*16)
+                # bitbackup &= bitmask
+                # for irow in range(13):
+                #     enable_write = BitArray('0b' + '00000'*(15 - irow) + '10000' + '00000'*irow)
+                #     should_write = (bits & enable_write).int
+                #     if not should_write:
+                #         continue 
+                #     else:
+                #         print('Writing')
+                #     bits_to_write = bitbackup | enable_write
+                if i == 0:
+                    bits_to_write = bits
+                else:
+                    bits_to_write = bits & bitmask_nowrite
+                print(f'row {row}, bits {bits_to_write}, {"writing!" if i == 0 else "not writing!"}')
+                # print('Should write?', should_write)
+                # print(f'bits = {bits}, enable_write = {enable_write}')
+                for bit in bits_to_write:
+                # if tdac:
+                #     print(f"bit = {bit}")
+                    # SIN (bit 3 in register)
+                    sinValue = (1 if bit else 0) << 2
+                    self.rfg.addWrite(
+                        register=targetRegister, value=sinValue, repeat=ckdiv
+                    )  # ensure SIN has higher delay than CLK1 to avoid setup violation / incorrect sampling
 
-                # CK1
+                    # CK1
+                    self.rfg.addWrite(
+                        register=targetRegister, value=sinValue | 0x1, repeat=ckdiv
+                    )
+                    self.rfg.addWrite(register=targetRegister, value=sinValue, repeat=ckdiv)
+
+                    # CK2
+                    self.rfg.addWrite(
+                        register=targetRegister, value=sinValue | 0x2, repeat=ckdiv
+                    )
+                    self.rfg.addWrite(register=targetRegister, value=sinValue, repeat=ckdiv)
+
+                ## Set Load (loads start bit 4) for the correct lane
+                loadbit = lane + 6
+                print(f"Loadbit = {loadbit}")
                 self.rfg.addWrite(
-                    register=targetRegister, value=sinValue | 0x1, repeat=ckdiv
+                    register=targetRegister, value=sinValue | (0x1 << loadbit), repeat=ckdiv
                 )
-                self.rfg.addWrite(register=targetRegister, value=sinValue, repeat=ckdiv)
+                self.rfg.addWrite(register=targetRegister, value=0, repeat=ckdiv)
 
-                # CK2
-                self.rfg.addWrite(
-                    register=targetRegister, value=sinValue | 0x2, repeat=ckdiv
-                )
-                self.rfg.addWrite(register=targetRegister, value=sinValue, repeat=ckdiv)
-
-            ## Set Load (loads start bit 4) for the correct lane
-            loadbit = lane + 6
-            print(f"Loadbit = {loadbit}")
-            self.rfg.addWrite(
-                register=targetRegister, value=sinValue | (0x1 << loadbit), repeat=ckdiv
-            )
-            self.rfg.addWrite(register=targetRegister, value=0, repeat=ckdiv)
-
-            await self.rfg.flush()
-            time.sleep(1)   
+                await self.rfg.flush()
+                # time.sleep(1)   
 
     async def writeSPIAsicConfig(
         self,
