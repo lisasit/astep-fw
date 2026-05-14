@@ -21,10 +21,10 @@ class DecoderSettingsBase:
     fpga_ts_length: int
     # FPGA timestamp clock frequency in Hz
     fpga_ts_clock_freq: float
+    # Period of sample clock in ns. Default is 1/120MHz (v4)
+    sample_clock_period_ns: float
     # Maximum FPGA timestamp difference between halfhits for filtering. If None, filtering is disabled
     fpga_ts_packet_filter_limit: float | None
-    # Period of sample clock in ns. Default is 25 ns
-    sample_clock_period_ns: float = 25
     # How many readout blocks to read and decode (for debugging)
     max_readout_blocks: int | None = None
     # Was the TLU used? If yes, then all halfhits before T0 are thrown away (this is when the FPGA ts becomes 0)
@@ -48,7 +48,7 @@ class DecoderSettingsBase:
 @dataclass
 class DecoderSettings_v3(DecoderSettingsBase):
     # Maximum FPGA timestamp difference for matching in seconds
-    fpga_ts_matching_limit: float = 3e-3
+    fpga_ts_matching_limit: float = 100e-6
     # Matcher strategy
     matcher_strategy: MatcherStrategy = MatcherStrategy.CLOSEST
     # Maximum halfhit timestamp difference for matching in clock cycles

@@ -32,6 +32,7 @@ def decode(args, filename, file_extensions, matcher_strategy):
             nchips_per_layer=args.nchips_per_layer,
             fpga_ts_length=args.fpga_ts_length,
             fpga_ts_clock_freq=80e6,
+            sample_clock_period_ns = 25.,  # 40MHz
             fpga_ts_packet_filter_limit = None,#100000, # 100ks aka ~28h
             fpga_ts_matching_limit=args.matcher_time_window,
             matcher_strategy=matcher_strategy,
@@ -50,6 +51,7 @@ def decode(args, filename, file_extensions, matcher_strategy):
             nchips_per_layer=args.nchips_per_layer,
             fpga_ts_length=args.fpga_ts_length,
             fpga_ts_clock_freq=80e6,
+            sample_clock_period_ns = 25./3.,  # 120MHz
             fpga_ts_packet_filter_limit = None,#100000, # 100ks aka ~28h
             max_readout_blocks=args.max_readout_blocks,
             use_tlu=args.use_tlu,
@@ -129,7 +131,7 @@ if __name__ == "__main__":
     parser.add_argument('--matcher-strategy', required=False, type=str, default='all', help="Strategy to use for matching (v3 only)")
     parser.add_argument('--matcher-ts-limit', required=False, type=int, default=2, help="Maximum chip timestamp difference in clock cycles for matching (v3 only)")
     parser.add_argument('--matcher-tot-limit', required=False, default=None, type=float, help="Relative ToT limit for matching (v3 only). If used, only halfhits whose ToT deviates at most by the given limit will be considerd for matching, otherwise ToT matching is disabled")
-    parser.add_argument('--matcher-time-window', required=False, type=float, default=3e-3, help="Time window for matching in seconds (v3 only)")
+    parser.add_argument('--matcher-time-window', required=False, type=float, default=100e-6, help="Time window for matching in seconds (v3 only)")
     parser.add_argument('--add-chip-timestamp-overflow', required=False, action="store_true", default=False, help="Enable adding overflow to the chip timestamp (v3 only)")
 
     args = parser.parse_args()
