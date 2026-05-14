@@ -21,7 +21,7 @@ class DecoderSettingsBase:
     fpga_ts_length: int
     # FPGA timestamp clock frequency in Hz
     fpga_ts_clock_freq: float
-    # Period of sample clock in ns. Default is 1/120MHz (v4)
+    # Period of sample clock in ns
     sample_clock_period_ns: float
     # Maximum FPGA timestamp difference between halfhits for filtering. If None, filtering is disabled
     fpga_ts_packet_filter_limit: float | None
