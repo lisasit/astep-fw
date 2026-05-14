@@ -100,11 +100,12 @@ class ASTEP(Satellite):
         self.threshold_pmos = config.get("threshold_pmos", 1100)
         self.vminuspix = config.get("vminuspix", 1000)
 
-        self.spi_freq = config.get("spi_freq", 1e6)
+        self.spi_freq = None
         if "spi_clkdiv" in config:
             self.spi_clkdiv = config.get("spi_clkdiv")
             self.log.info(f'SPI clkdiv overrides spi frequency. It ({self.spi_clkdiv}) will be used to set the spi clock divider')
-            self.spi_freq = None
+        else:
+            self.spi_freq = config.get("spi_freq", 1e6)
 
         if "nbytes_to_read_out" in config:
             self.nbytes_to_read_out = config.get("nbytes_to_read_out")
@@ -322,7 +323,7 @@ class ASTEP(Satellite):
                         n_load=10,
                         broadcast=False,
                         targetChip=ichip
-                    ) 
+                    )
                     if self.chip_version == 4:
                         await self.boardDriver.writeSPIAsicConfig(
                             lane=layer,
@@ -382,7 +383,6 @@ class ASTEP(Satellite):
         self.log.info(f'Timestamp config after configuring the timestamp again: {tc}')
         currentTS = await self.boardDriver.rfg.read_layers_fpga_timestamp_counter()
         self.log.info(f'FPGA TS = {currentTS}')
-        #await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush=True)
         if self.spi_freq is None:
             self.log.info(f'Setting SPI clock divider to {self.spi_clkdiv}')
             await self.boardDriver.configureLayerSPIDivider(self.spi_clkdiv, flush=True)
