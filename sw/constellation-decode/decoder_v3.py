@@ -152,9 +152,9 @@ class Decoder_v3(DecoderBase):
 
         # constructing ToT total
         tot_total = (tot_msb << 8) + tot_lsb
-        tot_us = tot_total * self.decoder_settings.sample_clock_period_ns
+        tot_ns = tot_total * self.decoder_settings.sample_clock_period_ns
 
-        return HalfHit_v3(packet_length, layer, chip_id, payload, is_col, location, timestamp, tot_total, tot_us, fpga_ts, self.last_hh_index, self.last_readout_id)
+        return HalfHit_v3(packet_length, layer, chip_id, payload, is_col, location, timestamp, tot_total, tot_ns, fpga_ts, self.last_hh_index, self.last_readout_id)
 
     def prepare_h5_file(self, filename) -> None:
         super().prepare_h5_file(filename)
@@ -196,7 +196,7 @@ class Decoder_v3(DecoderBase):
                 return hh.is_col
 
             def make_right_list(hh):
-                return (hh.location if hh.is_col else 0, 0 if hh.is_col else hh.location, hh.tot_raw, hh.tot_us, float(hh.fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9, 0)
+                return (hh.location if hh.is_col else 0, 0 if hh.is_col else hh.location, hh.tot_raw, hh.tot_ns, float(hh.fpga_ts) / (self.decoder_settings.fpga_ts_clock_freq * 1e-9) - hh.tot_ns, 0)
 
             for hh_type in ['row', 'col']:
                 assert self.h5_strip_datasets[hh_type]

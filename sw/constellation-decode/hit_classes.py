@@ -20,7 +20,7 @@ class HalfHit_v3:
     location: int
     timestamp: int
     tot_raw: int
-    tot_us: float
+    tot_ns: float
     fpga_ts: int
     index: int
     readout_id: int
@@ -39,7 +39,7 @@ class Hit_v3:
     col: int
     fpga_ts: int
     tot_raw: int
-    tot_us: float
+    tot_ns: float
     timestamp: int
     chip_id: int
     layer: int
@@ -50,7 +50,7 @@ class Hit_v4:
     col: int
     fpga_ts: int
     tot_raw: int
-    tot_us: float
+    tot_ns: float
     ts1: int
     ts2: int
     chip_id: int
