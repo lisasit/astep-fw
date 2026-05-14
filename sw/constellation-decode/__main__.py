@@ -130,7 +130,7 @@ if __name__ == "__main__":
     parser.add_argument('--matcher-ts-limit', required=False, type=int, default=2, help="Maximum chip timestamp difference in clock cycles for matching (v3 only)")
     parser.add_argument('--matcher-tot-limit', required=False, default=None, type=float, help="Relative ToT limit for matching (v3 only). If used, only halfhits whose ToT deviates at most by the given limit will be considerd for matching, otherwise ToT matching is disabled")
     parser.add_argument('--matcher-time-window', required=False, type=float, default=3e-3, help="Time window for matching in seconds (v3 only)")
-    parser.add_argument('--add-chip-timestamp-overflow', required=False, action="store_true", default=False, help="Enable adding overflow to the chip timestamp (v3 only")
+    parser.add_argument('--add-chip-timestamp-overflow', required=False, action="store_true", default=False, help="Enable adding overflow to the chip timestamp (v3 only)")
 
     args = parser.parse_args()
     main(args)
