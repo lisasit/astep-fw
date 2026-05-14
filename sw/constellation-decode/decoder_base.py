@@ -304,8 +304,9 @@ class DecoderBase:
             assert self.h5_dataset_hits
             current_rows = self.h5_dataset_hits.shape[0]
             self.h5_dataset_hits.resize((current_rows + len(self.hits), ))
+            # Note: convert FPGA timestamp (clock cycles) to nanoseconds and substract ToT from it since hit takes that long before being read out
             self.h5_dataset_hits[current_rows:] = np.array(
-                [(hit.col, hit.row, hit.tot_raw, hit.tot_us, float(hit.fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9, 0) for hit in self.hits], dtype=HIT_TYPE
+                [(hit.col, hit.row, hit.tot_raw, hit.tot_us, float(hit.fpga_ts) / self.decoder_settings.fpga_ts_clock_freq * 1e9 - hit.tot_us * 1e3, 0) for hit in self.hits], dtype=HIT_TYPE
             )
             self.h5_file_hits.flush()
 

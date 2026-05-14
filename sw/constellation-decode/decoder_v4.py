@@ -96,10 +96,11 @@ class Decoder_v4(DecoderBase):
             tot_raw = ts2_dec - ts1_dec
         else:
             tot_raw = 2**18 + ts2_dec - ts1_dec
+        tot_us = tot_raw * self.decoder_settings.sample_clock_period_ns
 
-        fpga_ts = np.uint64(int.from_bytes(packet[10:], 'big'))
+        fpga_ts = int.from_bytes(packet[10:], 'big')
 
-        return Hit_v4(row, col, fpga_ts, tot_raw, tot_raw*self.decoder_settings.sample_clock_period_ns, ts1_dec, ts2_dec, chip_id, layer, payload, packet_length)
+        return Hit_v4(row, col, fpga_ts, tot_raw, tot_us, ts1_dec, ts2_dec, chip_id, layer, payload, packet_length)
 
     def prepare_root_file(self, filename) -> None:
         super().prepare_root_file(filename)

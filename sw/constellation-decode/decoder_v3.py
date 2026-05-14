@@ -152,8 +152,9 @@ class Decoder_v3(DecoderBase):
 
         # constructing ToT total
         tot_total = (tot_msb << 8) + tot_lsb
+        tot_us = tot_total * self.decoder_settings.sample_clock_period_ns
 
-        return HalfHit_v3(packet_length, layer, chip_id, payload, is_col, location, timestamp, tot_total, tot_total*self.decoder_settings.sample_clock_period_ns, fpga_ts, self.last_hh_index, self.last_readout_id)
+        return HalfHit_v3(packet_length, layer, chip_id, payload, is_col, location, timestamp, tot_total, tot_us, fpga_ts, self.last_hh_index, self.last_readout_id)
 
     def prepare_h5_file(self, filename) -> None:
         super().prepare_h5_file(filename)
