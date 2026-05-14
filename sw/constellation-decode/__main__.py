@@ -81,6 +81,12 @@ def main(args):
     else:
         print(f'Decoding directory {args.dir}')
         filenames = [f'{args.dir}/{filename}' for filename in os.listdir(args.dir) if filename.endswith('.bin')]
+        if args.filter is not None:
+            filenames = [filename for filename in filenames if args.filter in filename]
+        print('Filenames to decode:')
+        for filename in filenames:
+            print(filename)
+        print(f'{len(filenames)} files in total')
 
     if args.matcher_strategy == 'all':
         matcher_strategy = MatcherStrategy.ALL
@@ -108,6 +114,7 @@ if __name__ == "__main__":
     parser.add_argument('-n', '--name', required=False, default=None,
                   help='Name of the file to decode')
     parser.add_argument('-d', '--dir', required=False, default=None, help='Directory with files to decode')
+    parser.add_argument('--filter', required=False, type=str, default=None, help='A common part of the name of the files that need to be decoded. For filtering out only the necessary runs')
     parser.add_argument('-f', '--force', required=False, default=False, action='store_true', help='Decode even if files exist already')
     parser.add_argument('-h5', '--h5', required=False, default=False, action="store_true", help='Write the decoded output into an h5 file')
     parser.add_argument('-root', '--root', required=False, default=False, action="store_true", help='Write the decoded output into a root file')
