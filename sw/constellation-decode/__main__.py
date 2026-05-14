@@ -32,7 +32,7 @@ def decode(args, filename, file_extensions, matcher_strategy):
             nchips_per_layer=args.nchips_per_layer,
             fpga_ts_length=args.fpga_ts_length,
             fpga_ts_clock_freq=80e6,
-            sample_clock_period_ns = 25.,  # 40MHz
+            sample_clock_period_ns = 50.,  # 20MHz
             fpga_ts_packet_filter_limit = None,#100000, # 100ks aka ~28h
             fpga_ts_matching_limit=args.matcher_time_window,
             matcher_strategy=matcher_strategy,
