@@ -41,6 +41,7 @@ def decode(args, filename, file_extensions, matcher_strategy):
             max_readout_blocks=args.max_readout_blocks,
             write_strip_files=args.write_strip_files,
             use_tlu=args.use_tlu,
+            no_matching=args.no_matching
         )
         d = Decoder_v3(filename, stats, decoder_settings)
     else:
@@ -124,6 +125,7 @@ if __name__ == "__main__":
     parser.add_argument('--matcher-tot-limit', required=False, default=None, type=float, help="Relative ToT limit for matching (v3 only). If used, only halfhits whose ToT deviates at most by the given limit will be considerd for matching, otherwise ToT matching is disabled")
     parser.add_argument('--matcher-time-window', required=False, type=float, default=3e-3, help="Time window for matching in seconds (v3 only)")
     parser.add_argument('--add-chip-timestamp-overflow', required=False, action="store_true", default=False, help="Enable adding overflow to the chip timestamp (v3 only")
+    parser.add_argument('--no-matching', required=False, action='store_true', default=False, help="Do not match halfhits into hits and store only halfhit information")
 
     args = parser.parse_args()
     main(args)

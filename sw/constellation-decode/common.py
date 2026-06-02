@@ -59,16 +59,21 @@ class DecoderSettings_v3(DecoderSettingsBase):
     add_chip_timestamp_overflow: bool = False
     # Flag to save h5 files for row and column halfhits separately
     write_strip_files: bool = False
+    # Do not match halfhits into hits
+    no_matching: bool = False
 
     def print(self) -> None:
         super().print()
         print( 'HalfHit matching:')
-        print(f'    Max FPGA timestamp difference between halfhits in a hit is {self.fpga_ts_matching_limit} s')
-        print(f'    {"ALL" if self.matcher_strategy == MatcherStrategy.ALL else "CLOSEST"} matching strategy is used')
-        print(f'    Max on-chip timestamp difference between halfhits in a hit is {self.matcher_ts_limit} clock cycles')
-        print(f'    Max ToT difference between halfhits in a hit is {"ignored" if self.matcher_tot_limit is None else str(self.matcher_tot_limit*100)+"%"}')
-        print(f'    Chip timestamp overflow was{" " if self.add_chip_timestamp_overflow else " not"} added')
-        print(f'    "Strip" files were {"" if self.write_strip_files else "not "}written')
+        if self.no_matching:
+            print('    Disabled')
+        else:
+            print(f'    Max FPGA timestamp difference between halfhits in a hit is {self.fpga_ts_matching_limit} s')
+            print(f'    {"ALL" if self.matcher_strategy == MatcherStrategy.ALL else "CLOSEST"} matching strategy is used')
+            print(f'    Max on-chip timestamp difference between halfhits in a hit is {self.matcher_ts_limit} clock cycles')
+            print(f'    Max ToT difference between halfhits in a hit is {"ignored" if self.matcher_tot_limit is None else str(self.matcher_tot_limit*100)+"%"}')
+            print(f'    Chip timestamp overflow was{" " if self.add_chip_timestamp_overflow else " not"} added')
+            print(f'    "Strip" files were {"" if self.write_strip_files else "not "}written')
 
 @dataclass
 class DecoderSettings_v4(DecoderSettingsBase):

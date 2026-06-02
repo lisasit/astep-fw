@@ -79,9 +79,12 @@ class Decoder_v3(DecoderBase):
             return False
 
         # Match hits
-        matched_hits = self.matcher.match()
-        self.hits += matched_hits
-        self.stats.hit_count += len(matched_hits)
+        if self.decoder_settings.no_matching:
+            self.hh_to_match.clear()
+        else:
+            matched_hits = self.matcher.match()
+            self.hits += matched_hits
+            self.stats.hit_count += len(matched_hits)
         return True
 
     def read_and_decode_next_block(self) -> deque[HalfHit_v3] | None:
